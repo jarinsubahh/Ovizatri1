@@ -1,0 +1,121 @@
+.hero {
+  position: relative;
+  min-height: 92vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background: var(--forest-dark);
+}
+
+.hero-slideshow {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  animation-name: hero-crossfade;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: opacity;
+}
+
+/* Percentages are relative to the whole shared cycle; each slide's
+   animation-delay is offset so this single rule produces a continuous
+   hand-off from one photo to the next with no blank frame. */
+@keyframes hero-crossfade {
+  0% {
+    opacity: 0;
+  }
+  3% {
+    opacity: 1;
+  }
+  17% {
+    opacity: 1;
+  }
+  20% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 20, 15, 0.62) 0%, rgba(8, 20, 15, 0.38) 42%, rgba(8, 20, 15, 0.66) 100%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 720px;
+  padding-top: 74px;
+}
+
+.hero-eyebrow {
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  color: var(--paper);
+  font-size: clamp(2.4rem, 5.4vw, 3.6rem);
+  line-height: 1.08;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.hero-title span {
+  font-style: italic;
+  color: var(--gold);
+}
+
+.hero-sub {
+  color: rgba(252, 250, 244, 0.86);
+  font-size: 1.08rem;
+  max-width: 52ch;
+  margin-bottom: 34px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.hero-btn-outline {
+  color: var(--paper);
+  border-color: rgba(252, 250, 244, 0.55);
+}
+
+.hero-btn-outline:hover {
+  background: var(--paper);
+  color: var(--forest-dark);
+  border-color: var(--paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide {
+    animation: none;
+  }
+  .hero-slide:first-child {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    min-height: 86vh;
+  }
+}

@@ -1,0 +1,144 @@
+.detail-hero {
+  position: relative;
+  height: 46vh;
+  min-height: 320px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: flex-end;
+}
+
+.detail-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 20, 15, 0.1), rgba(8, 20, 15, 0.72));
+}
+
+.detail-hero-content {
+  position: relative;
+  z-index: 1;
+  padding: 32px 0;
+  color: var(--paper);
+  width: 100%;
+}
+
+.detail-hero-content h1 {
+  color: var(--paper);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  margin-bottom: 8px;
+}
+
+.detail-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.9rem;
+  color: rgba(252, 250, 244, 0.85);
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 40px;
+  padding-top: 40px;
+}
+
+.detail-main h2 {
+  font-size: 1.3rem;
+  margin-top: 32px;
+}
+
+.detail-main h2:first-child {
+  margin-top: 0;
+}
+
+.detail-body-text {
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.detail-sidebar {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+}
+
+.amenity-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.amenity-chip {
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--sand);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  font-size: 0.88rem;
+}
+
+.review-item {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.review-item:last-child {
+  border-bottom: none;
+}
+
+.review-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.review-author {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.review-date {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.review-comment {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.related-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .detail-sidebar {
+    position: static;
+  }
+}
