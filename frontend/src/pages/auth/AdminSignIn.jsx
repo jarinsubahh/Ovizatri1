@@ -16,10 +16,10 @@ export default function AdminSignIn() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    const result = login('admin', form.email, form.password)
+    const result = await login('admin', form.email, form.password)
     if (!result.ok) {
       setError(result.error)
       return

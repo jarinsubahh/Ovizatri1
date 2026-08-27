@@ -57,14 +57,14 @@ export default function AgencySignUp() {
     return next
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setFormError('')
     const validation = validate()
     setErrors(validation)
     if (Object.keys(validation).length > 0) return
 
-    const result = signUpAgency(form)
+    const result = await signUpAgency(form)
     if (!result.ok) {
       setFormError(result.error)
       return

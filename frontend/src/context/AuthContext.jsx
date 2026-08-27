@@ -1,32 +1,52 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { demoUsers, demoAdmins, demoAgencyAccounts, agencies } from '../data/mockData'
-
-// ============================================================================
-// AuthContext — mock authentication only.
-//
-// There is no backend yet, so this validates against the demo ACCOUNT
-// records in mockData.js and persists the "session" to localStorage. When
-// the PostgreSQL-backed API exists, `login`/`signUp` are the two functions
-// that need to be pointed at real endpoints; every consuming component only
-// reads `account` / `role` from this context, so the rest of the app should
-// not need to change.
-// ============================================================================
 
 const AuthContext = createContext(null)
 const STORAGE_KEY = 'ovizatri.session'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+async function request(path, options = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.message || 'Authentication request failed.')
+  return data
+}
+
+function accountFromUser(user, token) {
+  const type = user.role === 'traveler' ? 'user' : user.role
+  const profile = user.profile || {}
+  if (type === 'user') {
+    return { token, accountID: user.id, accountType: type, email: user.email, userID: profile.user_id, username: profile.username, fullname: profile.fullname, gender: profile.gender, dob: profile.dob, phone: profile.phone, pfp_url: null }
+  }
+  if (type === 'agency') {
+    return { token, accountID: user.id, accountType: type, email: user.email, agency: { agencyID: profile.agency_id, agencyName: profile.agency_name, ownerName: profile.owner_name, phone: profile.phone, experience_years: profile.experience_years, overview: profile.overview, websiteUrl: profile.website_url, tradeLicenseDoc_URL: profile.trade_license_doc_url, status: profile.status, address: profile.address } }
+  }
+  return { token, accountID: user.id, accountType: 'admin', email: user.email, adminID: profile.admin_id, adminName: profile.admin_name, roleLevel: profile.role_level }
+}
 
 export function AuthProvider({ children }) {
   const [account, setAccount] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) setAccount(JSON.parse(raw))
-    } catch {
-      // ignore corrupted session
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (!stored) {
+      setLoading(false)
+      return
     }
-    setLoading(false)
+    try {
+      const session = JSON.parse(stored)
+      if (!session.token) throw new Error('Invalid session')
+      request('/auth/me', { headers: { Authorization: `Bearer ${session.token}` } })
+        .then((data) => persist(accountFromUser(data.user, session.token)))
+        .catch(() => persist(null))
+        .finally(() => setLoading(false))
+    } catch {
+      persist(null)
+      setLoading(false)
+    }
   }, [])
 
   function persist(next) {
@@ -35,84 +55,41 @@ export function AuthProvider({ children }) {
     else localStorage.removeItem(STORAGE_KEY)
   }
 
-  function login(role, email, password) {
-    const pool = role === 'user' ? demoUsers : role === 'agency' ? demoAgencyAccounts : demoAdmins
-    const match = pool.find((a) => a.email.toLowerCase() === email.toLowerCase() && a.password === password)
-    if (!match) {
-      return { ok: false, error: 'Email or password is incorrect.' }
+  async function login(role, email, password) {
+    try {
+      const data = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+      const next = accountFromUser(data.user, data.token)
+      if (role !== next.accountType) return { ok: false, error: 'This account does not match the selected sign-in type.' }
+      persist(next)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
     }
-    const { password: _pw, ...safe } = match
-    let profile = safe
-    if (role === 'agency') {
-      const agency = agencies.find((a) => a.agencyID === match.agencyID)
-      profile = { ...safe, agency }
+  }
+
+  async function signUpUser(form) {
+    try {
+      const data = await request('/auth/signup/traveler', { method: 'POST', body: JSON.stringify(form) })
+      persist(accountFromUser(data.user, data.token))
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
     }
-    persist(profile)
-    return { ok: true }
   }
 
-  function signUpUser(form) {
-    const exists = demoUsers.some((u) => u.email.toLowerCase() === form.email.toLowerCase())
-    if (exists) return { ok: false, error: 'An account with this email already exists.' }
-    const profile = {
-      accountID: `ACC-U${Math.floor(Math.random() * 9000) + 100}`,
-      accountType: 'user',
-      email: form.email,
-      userID: `USR-${Math.floor(Math.random() * 9000) + 100}`,
-      username: form.username,
-      fullname: form.fullname,
-      gender: form.gender,
-      dob: form.dob,
-      phone: form.phone,
-      pfp_url: null,
+  async function signUpAgency(form) {
+    try {
+      const data = await request('/auth/signup/agency', { method: 'POST', body: JSON.stringify(form) })
+      persist(accountFromUser(data.user, data.token))
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error.message }
     }
-    persist(profile)
-    return { ok: true }
   }
 
-  function signUpAgency(form) {
-    const profile = {
-      accountID: `ACC-A${Math.floor(Math.random() * 9000) + 100}`,
-      accountType: 'agency',
-      email: form.email,
-      agency: {
-        agencyID: `AGN-${Math.floor(Math.random() * 9000) + 100}`,
-        agencyName: form.agencyName,
-        ownerName: form.ownerName,
-        phone: form.phone,
-        experience_years: Number(form.experience_years) || 0,
-        overview: form.overview,
-        websiteUrl: form.websiteUrl,
-        tradeLicenseDoc_URL: form.tradeLicenseFileName ? `/docs/${form.tradeLicenseFileName}` : null,
-        status: 'pending_review',
-        address: {
-          street_address: form.street_address,
-          thana: form.thana,
-          district: form.district,
-          division: form.division,
-          postalCode: form.postalCode,
-        },
-      },
-    }
-    persist(profile)
-    return { ok: true }
-  }
+  function logout() { persist(null) }
 
-  function logout() {
-    persist(null)
-  }
-
-  const value = {
-    account,
-    role: account?.accountType ?? null,
-    loading,
-    login,
-    logout,
-    signUpUser,
-    signUpAgency,
-  }
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ account, role: account?.accountType ?? null, loading, login, logout, signUpUser, signUpAgency }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

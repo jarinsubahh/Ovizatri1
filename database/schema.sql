@@ -1,12 +1,3 @@
--- ============================================================
--- OVIZATRI - PostgreSQL Database Schema
--- Based on:
---   1) OVIZATRI ERD (erd2.drawio.pdf)
---   2) Current frontend data model and flows
---
--- The schema intentionally stays within the ERD/frontend scope.
--- No frontend files are modified by this file.
--- ============================================================
 
 BEGIN;
 

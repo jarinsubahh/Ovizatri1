@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { demoAgencyAccounts } from '../../data/mockData'
 import sajekValley from '../../assets/images/sajekvalley.jpg'
 import './Auth.css'
 
@@ -18,23 +17,19 @@ export default function AgencySignIn() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     if (!form.email || !form.password) {
       setError('Enter both your email and password.')
       return
     }
-    const result = login('agency', form.email, form.password)
+    const result = await login('agency', form.email, form.password)
     if (!result.ok) {
       setError(result.error)
       return
     }
     navigate(redirectTo, { replace: true })
-  }
-
-  function fillDemo() {
-    setForm({ email: demoAgencyAccounts[0].email, password: demoAgencyAccounts[0].password })
   }
 
   return (
@@ -60,11 +55,6 @@ export default function AgencySignIn() {
               Sign In
             </button>
           </form>
-
-          <div className="auth-divider">or</div>
-          <button type="button" className="btn btn-outline btn-block" onClick={fillDemo}>
-            Use demo agency account
-          </button>
 
           <p className="auth-switch">
             New agency? <Link to="/agency/signup">Register your agency</Link>

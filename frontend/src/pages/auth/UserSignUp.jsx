@@ -40,14 +40,14 @@ export default function UserSignUp() {
     return next
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setFormError('')
     const validation = validate()
     setErrors(validation)
     if (Object.keys(validation).length > 0) return
 
-    const result = signUpUser(form)
+    const result = await signUpUser(form)
     if (!result.ok) {
       setFormError(result.error)
       return
