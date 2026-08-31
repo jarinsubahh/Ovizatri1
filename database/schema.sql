@@ -1,9 +1,8 @@
 
 BEGIN;
 
--- ============================================================
 -- 1. ACCOUNT
--- ============================================================
+
 CREATE TABLE account (
     account_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -15,10 +14,9 @@ CREATE TABLE account (
         CHECK (account_type IN ('user', 'agency', 'admin'))
 );
 
--- ============================================================
 -- 2. ADDRESS
 -- Used by USER (present/permanent) and AGENCY (registered).
--- ============================================================
+
 CREATE TABLE address (
     address_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     street_address TEXT NOT NULL,
@@ -28,10 +26,8 @@ CREATE TABLE address (
     postal_code VARCHAR(20)
 );
 
--- ============================================================
 -- 3. USER / TRAVELER
--- ACCOUNT 1 : 0..1 USER
--- ============================================================
+
 CREATE TABLE app_user (
     user_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id INTEGER NOT NULL UNIQUE,
@@ -63,10 +59,8 @@ CREATE TABLE app_user (
         ON DELETE SET NULL
 );
 
--- ============================================================
 -- 4. ADMIN
--- ACCOUNT 1 : 0..1 ADMIN
--- ============================================================
+
 CREATE TABLE admin (
     admin_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id INTEGER NOT NULL UNIQUE,
@@ -80,10 +74,8 @@ CREATE TABLE admin (
         ON DELETE CASCADE
 );
 
--- ============================================================
 -- 5. AGENCY
--- ACCOUNT 1 : 0..1 AGENCY
--- ============================================================
+
 CREATE TABLE agency (
     agency_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id INTEGER NOT NULL UNIQUE,
@@ -117,9 +109,8 @@ CREATE TABLE agency (
         CHECK (status IN ('pending_review', 'verified', 'rejected', 'suspended'))
 );
 
--- ============================================================
 -- 6. DESTINATION
--- ============================================================
+
 CREATE TABLE destination (
     destination_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(200) NOT NULL UNIQUE,
@@ -132,12 +123,8 @@ CREATE TABLE destination (
         CHECK (avg_rating IS NULL OR avg_rating BETWEEN 0 AND 5)
 );
 
--- ============================================================
 -- 7. ITINERARY
--- Customer-created trip planner.
--- USER 1 : N ITINERARY
--- DESTINATION 1 : N ITINERARY
--- ============================================================
+
 CREATE TABLE itinerary (
     itinerary_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -166,10 +153,9 @@ CREATE TABLE itinerary (
         CHECK (total_budget IS NULL OR total_budget >= 0)
 );
 
--- ============================================================
+
 -- 8. ITINERARY_DAY
--- ITINERARY 1 : N ITINERARY_DAY
--- ============================================================
+
 CREATE TABLE itinerary_day (
     itinerary_day_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     itinerary_id INTEGER NOT NULL,
@@ -193,10 +179,8 @@ CREATE TABLE itinerary_day (
         UNIQUE (itinerary_id, day_number)
 );
 
--- ============================================================
 -- 9. DAY_ACTIVITY
--- ITINERARY_DAY 1 : N DAY_ACTIVITY
--- ============================================================
+
 CREATE TABLE day_activity (
     activity_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     itinerary_day_id INTEGER NOT NULL,
@@ -210,12 +194,8 @@ CREATE TABLE day_activity (
         ON DELETE CASCADE
 );
 
--- ============================================================
 -- 10. TOUR_PACKAGE
--- A package belongs to one destination and is offered by one agency.
--- DESTINATION 1 : N TOUR_PACKAGE
--- AGENCY 1 : N TOUR_PACKAGE
--- ============================================================
+
 CREATE TABLE tour_package (
     package_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     agency_id INTEGER NOT NULL,
@@ -252,13 +232,8 @@ CREATE TABLE tour_package (
         CHECK (discount BETWEEN 0 AND 100)
 );
 
--- ============================================================
 -- 11. AMENITY
--- Shared amenity catalogue.
--- TOUR_PACKAGE N : M AMENITY through package_amenity.
--- This matches the frontend's amenityIDs arrays and the ERD's
--- "includes" relationship without duplicating amenity data.
--- ============================================================
+
 CREATE TABLE amenity (
     amenity_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name VARCHAR(150) NOT NULL UNIQUE,
@@ -284,10 +259,8 @@ CREATE TABLE package_amenity (
         ON DELETE CASCADE
 );
 
--- ============================================================
 -- 12. TOUR_SCHEDULE
--- TOUR_PACKAGE 1 : N TOUR_SCHEDULE
--- ============================================================
+
 CREATE TABLE tour_schedule (
     schedule_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     package_id INTEGER NOT NULL,
@@ -307,17 +280,8 @@ CREATE TABLE tour_schedule (
         UNIQUE (package_id, departure_date, return_date)
 );
 
--- ============================================================
 -- 13. BOOKING
--- USER 1 : N BOOKING
--- TOUR_PACKAGE 1 : N BOOKING
--- TOUR_SCHEDULE 1 : N BOOKING
---
--- The current frontend books a TOUR_PACKAGE + TOUR_SCHEDULE.
--- itinerary_id is included because ITINERARY exists in the ERD and
--- can be associated with a booking later; it is nullable because
--- the current booking flow does not send an itinerary.
--- ============================================================
+
 CREATE TABLE booking (
     booking_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -363,10 +327,8 @@ CREATE TABLE booking (
         CHECK (payment_status IN ('pending', 'paid', 'refunded', 'failed'))
 );
 
--- ============================================================
 -- 14. PAYMENT
--- BOOKING 1 : 0..1 PAYMENT
--- ============================================================
+
 CREATE TABLE payment (
     payment_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     booking_id INTEGER NOT NULL UNIQUE,
@@ -385,13 +347,8 @@ CREATE TABLE payment (
         CHECK (amount_paid >= 0)
 );
 
--- ============================================================
 -- 15. REVIEW
--- USER 1 : N REVIEW
--- TOUR_PACKAGE 1 : N REVIEW
---
--- Current frontend reviews are package reviews.
--- ============================================================
+
 CREATE TABLE review (
     review_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -419,10 +376,8 @@ CREATE TABLE review (
         UNIQUE (user_id, package_id)
 );
 
--- ============================================================
 -- 16. BLOG
--- ACCOUNT 1 : N BLOG
--- ============================================================
+
 CREATE TABLE blog (
     blog_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id INTEGER NOT NULL,
@@ -443,11 +398,8 @@ CREATE TABLE blog (
         CHECK (status IN ('draft', 'published', 'pending', 'rejected'))
 );
 
--- ============================================================
 -- 17. AGENCY_AUDIT_LOG
--- ADMIN 1 : N AUDIT_LOG
--- AGENCY 1 : N AUDIT_LOG
--- ============================================================
+
 CREATE TABLE agency_audit_log (
     audit_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     admin_id INTEGER NOT NULL,
@@ -472,10 +424,8 @@ CREATE TABLE agency_audit_log (
         CHECK (status_changed_to IN ('pending_review', 'verified', 'rejected', 'suspended'))
 );
 
--- ============================================================
 -- 18. USER SAVED DESTINATIONS
--- USER N : M DESTINATION
--- ============================================================
+
 CREATE TABLE user_saved_destination (
     user_id INTEGER NOT NULL,
     destination_id INTEGER NOT NULL,
@@ -496,10 +446,8 @@ CREATE TABLE user_saved_destination (
         ON DELETE CASCADE
 );
 
--- ============================================================
 -- 19. USER SAVED TOUR PACKAGES
--- USER N : M TOUR_PACKAGE
--- ============================================================
+
 CREATE TABLE user_saved_package (
     user_id INTEGER NOT NULL,
     package_id INTEGER NOT NULL,
@@ -520,9 +468,9 @@ CREATE TABLE user_saved_package (
         ON DELETE CASCADE
 );
 
--- ============================================================
+
 -- Helpful indexes for common foreign-key/filter operations
--- ============================================================
+
 CREATE INDEX idx_app_user_account_id
     ON app_user(account_id);
 

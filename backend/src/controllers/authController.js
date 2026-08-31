@@ -15,21 +15,33 @@ const signupTraveler = async (req, res) => {
   const client = await db.getClient();
   let transactionStarted = false;
   try {
-    const { fullname, username, email, password, phone, gender, dob } = req.body;
+    const { fullname, username, email, password, phone, gender, dob, present_address, permanent_address } = req.body;
     if (!fullname?.trim() || !username?.trim() || !email?.trim() || !password) return res.status(400).json({ success: false, message: 'Full name, username, email, and password are required.' });
     await client.query('BEGIN');
     transactionStarted = true;
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedUsername = username.trim();
+    const presentAddress = present_address?.trim() || null;
+    const permanentAddress = permanent_address?.trim() || null;
     const duplicate = await client.query(`SELECT 1 FROM account WHERE LOWER(email) = $1 UNION ALL SELECT 1 FROM app_user WHERE LOWER(username) = LOWER($2)`, [normalizedEmail, normalizedUsername]);
     if (duplicate.rows.length) {
       await client.query('ROLLBACK');
       transactionStarted = false;
       return res.status(409).json({ success: false, message: 'That email or username is already registered.' });
     }
+    let presentAddressId = null;
+    let permanentAddressId = null;
+    if (presentAddress) {
+      const address = await client.query('INSERT INTO address (street_address) VALUES ($1) RETURNING address_id', [presentAddress]);
+      presentAddressId = address.rows[0].address_id;
+    }
+    if (permanentAddress) {
+      const address = await client.query('INSERT INTO address (street_address) VALUES ($1) RETURNING address_id', [permanentAddress]);
+      permanentAddressId = address.rows[0].address_id;
+    }
     const account = await client.query(`INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'user') RETURNING account_id, email, account_type, created_at`, [normalizedEmail, await bcrypt.hash(password, SALT_ROUNDS)]);
     const accountRow = account.rows[0];
-    const profile = await client.query(`INSERT INTO app_user (account_id, username, fullname, gender, dob, phone) VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id, username, fullname, gender, dob, phone, pfp_url`, [accountRow.account_id, normalizedUsername, fullname.trim(), gender || null, dob || null, phone?.trim() || null]);
+    const profile = await client.query(`INSERT INTO app_user (account_id, present_address_id, permanent_address_id, username, fullname, gender, dob, phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING user_id, present_address_id, permanent_address_id, username, fullname, gender, dob, phone, pfp_url`, [accountRow.account_id, presentAddressId, permanentAddressId, normalizedUsername, fullname.trim(), gender || null, dob || null, phone?.trim() || null]);
     await client.query('COMMIT');
     transactionStarted = false;
     const user = { ...accountRow, id: accountRow.account_id, name: profile.rows[0].fullname, role: 'user', profile: profile.rows[0] };

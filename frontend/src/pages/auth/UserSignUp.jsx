@@ -9,6 +9,8 @@ const initialForm = {
   username: '',
   email: '',
   phone: '',
+  present_address: '',
+  permanent_address: '',
   gender: '',
   dob: '',
   password: '',
@@ -107,6 +109,17 @@ export default function UserSignUp() {
                 <label htmlFor="dob">Date of birth</label>
                 <input id="dob" name="dob" type="date" value={form.dob} onChange={handleChange} />
                 {errors.dob && <span className="field-error">{errors.dob}</span>}
+              </div>
+            </div>
+
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="present_address">Present address</label>
+                <input id="present_address" name="present_address" value={form.present_address} onChange={handleChange} placeholder="House / road / area" />
+              </div>
+              <div className="field">
+                <label htmlFor="permanent_address">Permanent address</label>
+                <input id="permanent_address" name="permanent_address" value={form.permanent_address} onChange={handleChange} placeholder="House / road / area" />
               </div>
             </div>
 
