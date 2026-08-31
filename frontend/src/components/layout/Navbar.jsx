@@ -39,6 +39,18 @@ export default function Navbar() {
     navigate('/')
   }
 
+  // Frontend-only auth gate: signed-in travelers go straight to their
+  // wishlist, everyone else is routed to sign in with a return path so
+  // ProtectedRoute sends them back to /wishlist after authenticating.
+  function handleWishlistClick() {
+    setMenuOpen(false)
+    if (account) {
+      navigate('/wishlist')
+    } else {
+      navigate('/signin', { state: { from: { pathname: '/wishlist' } } })
+    }
+  }
+
   const dashboardPath = role === 'agency' ? '/agency/dashboard' : role === 'admin' ? '/admin' : '/dashboard'
   const displayName =
     role === 'agency' ? account?.agency?.agencyName : role === 'admin' ? account?.adminName : account?.fullname
@@ -60,6 +72,9 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
+          <button type="button" className="nav-link nav-link-btn" onClick={handleWishlistClick}>
+            Wishlist
+          </button>
         </nav>
 
         <div className="nav-actions">
@@ -84,6 +99,11 @@ export default function Navbar() {
                   <Link to={dashboardPath} role="menuitem">
                     {role === 'agency' ? 'Agency Dashboard' : role === 'admin' ? 'Admin Dashboard' : 'My Dashboard'}
                   </Link>
+                  {role === 'user' && (
+                    <Link to="/wishlist" role="menuitem">
+                      Wishlist
+                    </Link>
+                  )}
                   <button role="menuitem" onClick={handleLogout}>
                     Sign Out
                   </button>
@@ -106,6 +126,9 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
+          <button type="button" onClick={handleWishlistClick}>
+            Wishlist
+          </button>
           {!account ? (
             <>
               <Link to="/signin">Sign In</Link>

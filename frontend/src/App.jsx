@@ -27,6 +27,7 @@ import BlogDetails from './pages/blog/BlogDetails'
 import BlogEditor from './pages/blog/BlogEditor'
 
 import UserDashboard from './pages/user/UserDashboard'
+import Wishlist from './pages/user/Wishlist'
 
 import AgencyDashboard from './pages/agency/AgencyDashboard'
 import AgencyPackageManagement from './pages/agency/AgencyPackageManagement'
@@ -104,6 +105,16 @@ export default function App() {
             element={
               <ProtectedRoute role="user">
                 <UserDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Wishlist */}
+          <Route
+            path="/wishlist"
+            element={
+              <ProtectedRoute role="user">
+                <Wishlist />
               </ProtectedRoute>
             }
           />
