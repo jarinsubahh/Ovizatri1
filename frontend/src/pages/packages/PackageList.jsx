@@ -11,25 +11,30 @@ const SORTS = [
   { value: 'duration', label: 'Duration' },
 ]
 
+const PACKAGE_TYPES = [...new Set(destinations.map((d) => d.category))]
+
 export default function PackageList() {
   const [searchParams] = useSearchParams()
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(searchParams.get('q') || '')
   const [destinationFilter, setDestinationFilter] = useState(searchParams.get('destination') || 'All')
+  const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || 'All')
   const [sort, setSort] = useState('popular')
 
   const packages = listPackages()
 
   const filtered = useMemo(() => {
     let list = packages.filter((p) => {
+      const destination = getDestination(p.destinationID)
       const matchesQuery = !query.trim() || p.title.toLowerCase().includes(query.toLowerCase())
       const matchesDestination = destinationFilter === 'All' || p.destinationID === destinationFilter
-      return matchesQuery && matchesDestination
+      const matchesType = typeFilter === 'All' || destination?.category === typeFilter
+      return matchesQuery && matchesDestination && matchesType
     })
     if (sort === 'price-asc') list = [...list].sort((a, b) => a.price - b.price)
     if (sort === 'price-desc') list = [...list].sort((a, b) => b.price - a.price)
     if (sort === 'duration') list = [...list].sort((a, b) => a.duration - b.duration)
     return list
-  }, [packages, query, destinationFilter, sort])
+  }, [packages, query, destinationFilter, typeFilter, sort])
 
   return (
     <div className="page container">
@@ -55,6 +60,14 @@ export default function PackageList() {
             </option>
           ))}
         </select>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter by tour package type">
+          <option value="All">All types</option>
+          {PACKAGE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort packages">
           {SORTS.map((s) => (
             <option key={s.value} value={s.value}>
@@ -68,7 +81,7 @@ export default function PackageList() {
       {filtered.length === 0 ? (
         <div className="empty-state">
           <h3>No packages match your filters</h3>
-          <p>Try clearing the destination filter or search term.</p>
+          <p>Try clearing the destination or type filter.</p>
         </div>
       ) : (
         <div className="card-grid">

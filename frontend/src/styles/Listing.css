@@ -123,3 +123,17 @@
   color: var(--ink-faint);
   font-size: 0.72rem;
 }
+
+.wishlist-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.wishlist-item > a {
+  display: block;
+  color: inherit;
+}
+
+.wishlist-remove {
+  margin: 0 18px 18px;
+}
