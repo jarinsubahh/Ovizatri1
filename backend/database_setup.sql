@@ -51,7 +51,61 @@ CREATE TABLE IF NOT EXISTS agency_profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. PACKAGES / TOURS TABLE
+-- 4. PACKAGE TABLE
+-- Assumes the related users exist and have admin role privileges.
+CREATE TABLE IF NOT EXISTS package (
+    package_id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    destination VARCHAR(255) NOT NULL,
+    duration_days INTEGER NOT NULL CHECK (duration_days > 0),
+    price_per_person NUMERIC(12, 2) NOT NULL CHECK (price_per_person >= 0),
+    max_capacity INTEGER NOT NULL CHECK (max_capacity > 0),
+    available_slots INTEGER NOT NULL CHECK (available_slots >= 0),
+    created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT package_capacity_check
+        CHECK (available_slots <= max_capacity)
+);
+
+INSERT INTO package (title, description, destination, duration_days, price_per_person, max_capacity, available_slots, created_by)
+VALUES (
+    'Bali Wellness Escape',
+    'A 5-day retreat featuring beach relaxation, yoga, spa treatments, and cultural experiences in Bali.',
+    'Bali, Indonesia',
+    5,
+    899.00,
+    20,
+    12,
+    1
+);
+
+INSERT INTO package (title, description, destination, duration_days, price_per_person, max_capacity, available_slots, created_by)
+VALUES (
+    'Swiss Alps Adventure',
+    'A 7-day mountain journey through scenic rail routes, glacier walks, and alpine village stays.',
+    'Zermatt, Switzerland',
+    7,
+    1499.50,
+    15,
+    8,
+    2
+);
+
+INSERT INTO package (title, description, destination, duration_days, price_per_person, max_capacity, available_slots, created_by)
+VALUES (
+    'Kyoto Cultural Discovery',
+    'Explore temple heritage, local cuisine, and traditional neighborhoods during this immersive Kyoto tour.',
+    'Kyoto, Japan',
+    4,
+    1099.00,
+    18,
+    18,
+    3
+);
+
+-- 5. PACKAGES / TOURS TABLE
 CREATE TABLE IF NOT EXISTS tour_packages (
     id SERIAL PRIMARY KEY,
     agency_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -70,7 +124,7 @@ CREATE TABLE IF NOT EXISTS tour_packages (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. BOOKINGS TABLE
+-- 6. BOOKINGS TABLE
 CREATE TABLE IF NOT EXISTS bookings (
     id SERIAL PRIMARY KEY,
     package_id INTEGER NOT NULL REFERENCES tour_packages(id) ON DELETE CASCADE,
