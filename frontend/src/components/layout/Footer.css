@@ -1,57 +1,107 @@
 .footer {
-  background: var(--forest-dark);
-  color: rgba(252, 250, 244, 0.82);
-  margin-top: 64px;
+  background-color: #0b251e; /* Deep forest green */
+  color: #fdfbf7;
+  padding: 4rem 2rem 2.5rem; /* Increased top padding to 4rem and bottom to 2.5rem */
+  margin-top: auto;
+  width: 100%;
 }
 
-.footer-inner {
+.footer-container {
+  max-width: 1200px; /* Aligns perfectly with standard body container width */
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: 1.6fr 1fr 1fr 1fr;
-  gap: 32px;
-  padding: 56px 24px 40px;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: 3rem; /* Expanded column spacing */
+  padding-bottom: 3rem; /* Gives space before the bottom copyright line */
+  border-bottom: 1px solid rgba(253, 251, 247, 0.15);
+}
+
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .footer-logo {
-  color: var(--paper);
-  margin-bottom: 12px;
+  font-family: 'Fraunces', serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #fdfbf7;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.footer-tag {
-  color: rgba(252, 250, 244, 0.6);
-  font-size: 0.88rem;
-  max-width: 32ch;
-  margin: 0;
+.footer-tagline {
+  color: rgba(253, 251, 247, 0.7);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 300px;
 }
 
-.footer-col h4 {
-  color: var(--paper);
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
+.footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.footer-column-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  margin-bottom: 14px;
+  color: #d4a359; /* Accent gold color */
+  margin-bottom: 0.5rem;
 }
 
-.footer-col a {
-  display: block;
-  font-size: 0.88rem;
-  color: rgba(252, 250, 244, 0.72);
-  padding: 5px 0;
+.footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem; /* Generous vertical link spacing */
 }
 
-.footer-col a:hover {
-  color: var(--gold);
+.footer-links a {
+  color: rgba(253, 251, 247, 0.85);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: color 0.2s ease, transform 0.2s ease;
+  display: inline-block;
+}
+
+.footer-links a:hover {
+  color: #d4a359;
+  transform: translateX(2px);
 }
 
 .footer-bottom {
-  border-top: 1px solid rgba(252, 250, 244, 0.12);
-  padding: 18px 24px;
-  font-size: 0.78rem;
-  color: rgba(252, 250, 244, 0.55);
+  max-width: 1200px;
+  margin: 2rem auto 0; /* Clear vertical offset from main content */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: rgba(253, 251, 247, 0.5);
+  font-size: 0.85rem;
 }
 
-@media (max-width: 760px) {
-  .footer-inner {
-    grid-template-columns: 1fr 1fr;
+/* Responsive alignment for mobile devices */
+@media (max-width: 768px) {
+  .footer {
+    padding: 3rem 1.5rem 2rem;
+  }
+
+  .footer-container {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  .footer-bottom {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
   }
 }

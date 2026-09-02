@@ -9,6 +9,10 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const packageRoutes = require('./routes/packageRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const wishlistRoutes = require('./routes/wishlistRoutes');
+const searchRoutes = require('./routes/searchRoutes');
+const destinationRoutes = require('./routes/destinationRoutes');
+const statsRoutes = require('./routes/statsRoutes');
 const seedAdmin = require('./utils/seedAdmin');
 const db = require('./config/db');
 
@@ -49,7 +53,7 @@ app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Welcome to Ovizatri Travel & Tourism Backend API',
-    version: '1.0.0',
+    version: '1.1.0',
     documentation: {
       auth: {
         travelerSignup: 'POST /api/auth/signup/traveler',
@@ -60,9 +64,25 @@ app.get('/', (req, res) => {
       },
       packages: {
         listAll: 'GET /api/packages',
+        featured: 'GET /api/packages/featured',
         getOne: 'GET /api/packages/:id',
         create: 'POST /api/packages (Agency/Admin)',
         agencyPackages: 'GET /api/packages/agency/my-packages',
+      },
+      destinations: {
+        listAll: 'GET /api/destinations',
+        topRated: 'GET /api/destinations/top-rated',
+        getOne: 'GET /api/destinations/:id',
+      },
+      search: {
+        query: 'GET /api/search?destination=&packageType=&budget=&keyword=',
+      },
+      wishlist: {
+        get: 'GET /api/wishlist (Auth required)',
+        toggle: 'POST /api/wishlist/toggle (Auth required)',
+      },
+      stats: {
+        summary: 'GET /api/stats/summary',
       },
       admin: {
         stats: 'GET /api/admin/stats (Admin only)',
@@ -78,6 +98,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/destinations', destinationRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Global 404 Route
 app.use((req, res) => {
