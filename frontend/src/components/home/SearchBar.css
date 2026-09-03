@@ -1,6 +1,7 @@
 .search-bar-section {
+  margin-top: -60px;
   position: relative;
-  z-index: 5;
+  z-index: 10;
 }
 
 .search-card {
