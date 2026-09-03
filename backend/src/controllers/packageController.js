@@ -45,14 +45,11 @@ const getAllPackages = async (req, res) => {
   try {
     const { destination, minPrice, maxPrice, search, category } = req.query;
     let query = packageSelect + ' WHERE 1=1';
-    const { destination } = req.query;
-    let query = `SELECT * FROM packages WHERE available_slots > 0`;
     const params = [];
     let i = 1;
 
     if (destination) {
       query += ` AND LOWER(d.name) LIKE LOWER($${i++})`;
-      query += ` AND LOWER(destination) LIKE LOWER($1)`;
       params.push(`%${destination}%`);
     }
     if (category) {
@@ -73,8 +70,6 @@ const getAllPackages = async (req, res) => {
       params.push(Number(maxPrice));
     }
     query += ' ORDER BY p.package_id DESC';
-
-    query += ` ORDER BY created_at DESC`;
 
     const result = await db.query(query, params);
     const withAmenities = await attachAmenities(result.rows);
@@ -138,7 +133,6 @@ const getPackageById = async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query(packageSelect + ' WHERE p.package_id = $1', [id]);
-    const result = await db.query('SELECT * FROM packages WHERE package_id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Package not found.' });
@@ -169,11 +163,6 @@ const getPackageById = async (req, res) => {
   } catch (error) {
     console.error('Fetch single package error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch package details.' });
-    console.error('Get package by id error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch package details.',
-    });
   }
 };
 
@@ -199,10 +188,6 @@ const createPackage = async (req, res) => {
       discount,
       amenityIDs,
       agencyID,
-      destination,
-      duration_days,
-      price_per_person,
-      max_capacity,
     } = req.body;
 
     const destId = destinationID || destination_id;
@@ -210,11 +195,9 @@ const createPackage = async (req, res) => {
     const disc = discount || 0;
 
     if (!title || !destId || !price || !duration) {
-    if (!title || !destination || !duration_days || !price_per_person || !max_capacity) {
       return res.status(400).json({
         success: false,
         message: 'Title, destination, price, and duration are required.',
-        message: 'title, destination, duration_days, price_per_person, and max_capacity are required.',
       });
     }
 
@@ -228,27 +211,6 @@ const createPackage = async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING package_id AS "packageID", agency_id AS "agencyID", destination_id AS "destinationID",
                 title, price, duration, max_seat AS "maxSeat", discount, description
-    const createdBy = req.user?.user_id ?? req.user?.id;
-    if (!createdBy) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required to create a package.',
-      });
-    }
-
-    const query = `
-      INSERT INTO packages (
-        title,
-        description,
-        destination,
-        duration_days,
-        price_per_person,
-        max_capacity,
-        available_slots,
-        created_by
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
     `;
     const result = await db.query(insertQuery, [
       finalAgencyId,
@@ -258,9 +220,6 @@ const createPackage = async (req, res) => {
       Number(duration),
       Number(seats),
       Number(disc),
-
-    const result = await db.query(query, [
-      title,
       description || null,
     ]);
     const created = result.rows[0];
@@ -272,20 +231,10 @@ const createPackage = async (req, res) => {
         ...amenityIDs,
       ]);
     }
-      destination,
-      Number(duration_days),
-      Number(price_per_person),
-      Number(max_capacity),
-      Number(max_capacity),
-      Number(createdBy),
-    ]);
-
     return res.status(201).json({
       success: true,
       message: 'Tour package published successfully!',
       package: created,
-      message: 'Package created successfully.',
-      package: result.rows[0],
     });
   } catch (error) {
     if (error.code === '23503') {
@@ -293,10 +242,6 @@ const createPackage = async (req, res) => {
     }
     console.error('Create package error:', error);
     return res.status(500).json({ success: false, message: 'Failed to create tour package.' });
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create package.',
-    });
   }
 };
 
@@ -393,7 +338,6 @@ const updatePackage = async (req, res) => {
  * GET /api/packages/agency/my-packages (Agency)
  */
 const getAgencyPackages = async (req, res) => {
-const deletePackage = async (req, res) => {
   try {
     const agencyId = await getAgencyIdForAccount(req.user.id);
     if (!agencyId) {
@@ -401,31 +345,35 @@ const deletePackage = async (req, res) => {
     }
     const result = await db.query(packageSelect + ' WHERE p.agency_id = $1 ORDER BY p.package_id DESC', [agencyId]);
     const withAmenities = await attachAmenities(result.rows);
-    const { id } = req.params;
-    const result = await db.query('DELETE FROM packages WHERE package_id = $1 RETURNING *', [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Package not found.',
-      });
-    }
 
     return res.status(200).json({
       success: true,
       count: withAmenities.length,
       packages: withAmenities,
-      message: 'Package deleted successfully.',
-      package: result.rows[0],
     });
   } catch (error) {
     console.error('Fetch agency packages error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch agency tour packages.' });
-    console.error('Delete package error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to delete package.',
+  }
+};
+
+const deletePackage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query('DELETE FROM tour_package WHERE package_id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Package not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Package deleted successfully.',
+      package: result.rows[0],
     });
+  } catch (error) {
+    console.error('Delete package error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete package.' });
   }
 };
 
@@ -434,6 +382,7 @@ module.exports = {
   getFeaturedPackages,
   getPackageById,
   createPackage,
+  getAgencyPackages,
   updatePackage,
   deletePackage,
 };
