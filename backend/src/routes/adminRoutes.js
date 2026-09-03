@@ -11,5 +11,7 @@ router.get('/stats', adminController.getAdminStats);
 router.get('/users', adminController.getAllUsers);
 router.patch('/users/:id/status', adminController.toggleUserStatus);
 router.patch('/agencies/:agencyUserId/verify', adminController.verifyAgency);
+router.get('/blogs', adminController.getAllBlogsForAdmin);
+router.patch('/blogs/:id/status', adminController.updateBlogStatus);
 
 module.exports = router;

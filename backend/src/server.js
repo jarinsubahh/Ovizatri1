@@ -14,6 +14,7 @@ const db = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const blogRoutes = require('./routes/blogRoutes');
 
 // CORS configuration for frontend
 const allowedOrigins = [
@@ -43,6 +44,7 @@ app.use(
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 
 // Health check root endpoint
 app.get('/', (req, res) => {
@@ -78,7 +80,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/admin', adminRoutes);
-
+app.use('/api/blogs', blogRoutes);
 // Global 404 Route
 app.use((req, res) => {
   res.status(404).json({

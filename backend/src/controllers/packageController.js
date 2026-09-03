@@ -1,44 +1,17 @@
 const db = require('../config/db');
 
-/**
- * Get all active tour packages (Public)
- */
 const getAllPackages = async (req, res) => {
   try {
-    const { destination, minPrice, maxPrice, search } = req.query;
-
-    let query = `
-      SELECT p.*, u.name as agency_name, ap.office_address, ap.contact_person
-      FROM tour_packages p
-      JOIN users u ON p.agency_id = u.id
-      LEFT JOIN agency_profiles ap ON u.id = ap.user_id
-      WHERE p.status = 'active'
-    `;
+    const { destination } = req.query;
+    let query = `SELECT * FROM packages WHERE available_slots > 0`;
     const params = [];
-    let paramIndex = 1;
 
     if (destination) {
-      query += ` AND LOWER(p.destination) LIKE LOWER($${paramIndex++})`;
+      query += ` AND LOWER(destination) LIKE LOWER($1)`;
       params.push(`%${destination}%`);
     }
 
-    if (search) {
-      query += ` AND (LOWER(p.title) LIKE LOWER($${paramIndex}) OR LOWER(p.destination) LIKE LOWER($${paramIndex}) OR LOWER(p.description) LIKE LOWER($${paramIndex}))`;
-      params.push(`%${search}%`);
-      paramIndex++;
-    }
-
-    if (minPrice) {
-      query += ` AND p.price_per_person >= $${paramIndex++}`;
-      params.push(Number(minPrice));
-    }
-
-    if (maxPrice) {
-      query += ` AND p.price_per_person <= $${paramIndex++}`;
-      params.push(Number(maxPrice));
-    }
-
-    query += ` ORDER BY p.created_at DESC`;
+    query += ` ORDER BY created_at DESC`;
 
     const result = await db.query(query, params);
 
@@ -48,29 +21,18 @@ const getAllPackages = async (req, res) => {
       packages: result.rows,
     });
   } catch (error) {
-    console.error('Fetch packages error:', error);
+    console.error('Get all packages error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch tour packages.',
+      message: 'Failed to fetch packages.',
     });
   }
 };
 
-/**
- * Get single package details
- */
 const getPackageById = async (req, res) => {
   try {
     const { id } = req.params;
-    const query = `
-      SELECT p.*, u.name as agency_name, u.email as agency_email, u.phone as agency_phone,
-             ap.office_address, ap.contact_person, ap.website
-      FROM tour_packages p
-      JOIN users u ON p.agency_id = u.id
-      LEFT JOIN agency_profiles ap ON u.id = ap.user_id
-      WHERE p.id = $1
-    `;
-    const result = await db.query(query, [id]);
+    const result = await db.query('SELECT * FROM packages WHERE package_id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -84,7 +46,7 @@ const getPackageById = async (req, res) => {
       package: result.rows[0],
     });
   } catch (error) {
-    console.error('Fetch single package error:', error);
+    console.error('Get package by id error:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch package details.',
@@ -92,105 +54,183 @@ const getPackageById = async (req, res) => {
   }
 };
 
-/**
- * Create a new package (Agency only)
- */
 const createPackage = async (req, res) => {
   try {
-    const agencyId = req.user.id;
     const {
       title,
       description,
       destination,
       duration_days,
-      durationDays,
-      duration_nights,
-      durationNights,
       price_per_person,
-      price,
-      max_travelers,
-      maxTravelers,
-      start_date,
-      startDate,
-      end_date,
-      endDate,
-      image_url,
-      imageUrl,
+      max_capacity,
     } = req.body;
 
-    const days = duration_days || durationDays || 1;
-    const nights = duration_nights || durationNights || 0;
-    const packagePrice = price_per_person || price;
-    const travelers = max_travelers || maxTravelers || 20;
-    const sDate = start_date || startDate || null;
-    const eDate = end_date || endDate || null;
-    const img = image_url || imageUrl || null;
-
-    if (!title || !destination || !packagePrice) {
+    if (!title || !destination || !duration_days || !price_per_person || !max_capacity) {
       return res.status(400).json({
         success: false,
-        message: 'Title, destination, and price per person are required.',
+        message: 'title, destination, duration_days, price_per_person, and max_capacity are required.',
       });
     }
 
-    const insertQuery = `
-      INSERT INTO tour_packages (
-        agency_id, title, description, destination, duration_days, duration_nights,
-        price_per_person, max_travelers, start_date, end_date, image_url, status
+    const createdBy = req.user?.user_id ?? req.user?.id;
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required to create a package.',
+      });
+    }
+
+    const query = `
+      INSERT INTO packages (
+        title,
+        description,
+        destination,
+        duration_days,
+        price_per_person,
+        max_capacity,
+        available_slots,
+        created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
-    const result = await db.query(insertQuery, [
-      agencyId,
-      title.trim(),
+    const result = await db.query(query, [
+      title,
       description || null,
-      destination.trim(),
-      days,
-      nights,
-      packagePrice,
-      travelers,
-      sDate,
-      eDate,
-      img,
+      destination,
+      Number(duration_days),
+      Number(price_per_person),
+      Number(max_capacity),
+      Number(max_capacity),
+      Number(createdBy),
     ]);
 
     return res.status(201).json({
       success: true,
-      message: 'Tour package published successfully!',
+      message: 'Package created successfully.',
       package: result.rows[0],
     });
   } catch (error) {
     console.error('Create package error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to create tour package.',
+      message: 'Failed to create package.',
     });
   }
 };
 
-/**
- * Get agency's own packages
- */
-const getAgencyPackages = async (req, res) => {
+const updatePackage = async (req, res) => {
   try {
-    const agencyId = req.user.id;
-    const result = await db.query(
-      `SELECT * FROM tour_packages WHERE agency_id = $1 ORDER BY created_at DESC`,
-      [agencyId]
-    );
+    const { id } = req.params;
+    const existingResult = await db.query('SELECT * FROM packages WHERE package_id = $1', [id]);
+
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Package not found.',
+      });
+    }
+
+    const current = existingResult.rows[0];
+    const {
+      title,
+      description,
+      destination,
+      duration_days,
+      price_per_person,
+      max_capacity,
+      available_slots,
+    } = req.body;
+
+    const updateFields = [];
+    const values = [];
+
+    if (title !== undefined) {
+      updateFields.push('title = $' + (updateFields.length + 1));
+      values.push(title);
+    }
+    if (description !== undefined) {
+      updateFields.push('description = $' + (updateFields.length + 1));
+      values.push(description);
+    }
+    if (destination !== undefined) {
+      updateFields.push('destination = $' + (updateFields.length + 1));
+      values.push(destination);
+    }
+    if (duration_days !== undefined) {
+      updateFields.push('duration_days = $' + (updateFields.length + 1));
+      values.push(Number(duration_days));
+    }
+    if (price_per_person !== undefined) {
+      updateFields.push('price_per_person = $' + (updateFields.length + 1));
+      values.push(Number(price_per_person));
+    }
+    if (max_capacity !== undefined) {
+      updateFields.push('max_capacity = $' + (updateFields.length + 1));
+      values.push(Number(max_capacity));
+    }
+    if (available_slots !== undefined) {
+      updateFields.push('available_slots = $' + (updateFields.length + 1));
+      values.push(Number(available_slots));
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields provided for update.',
+      });
+    }
+
+    const nextMaxCapacity = max_capacity !== undefined ? Number(max_capacity) : Number(current.max_capacity);
+    const nextAvailableSlots = available_slots !== undefined ? Number(available_slots) : Number(current.available_slots);
+
+    if (nextAvailableSlots > nextMaxCapacity) {
+      return res.status(400).json({
+        success: false,
+        message: 'available_slots cannot be greater than max_capacity.',
+      });
+    }
+
+    values.push(id);
+    const query = `UPDATE packages SET ${updateFields.join(', ')} WHERE package_id = $${values.length} RETURNING *`;
+    const result = await db.query(query, values);
 
     return res.status(200).json({
       success: true,
-      count: result.rows.length,
-      packages: result.rows,
+      package: result.rows[0],
     });
   } catch (error) {
-    console.error('Fetch agency packages error:', error);
+    console.error('Update package error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch agency tour packages.',
+      message: 'Failed to update package.',
+    });
+  }
+};
+
+const deletePackage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query('DELETE FROM packages WHERE package_id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Package not found.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Package deleted successfully.',
+      package: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Delete package error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete package.',
     });
   }
 };
@@ -199,5 +239,6 @@ module.exports = {
   getAllPackages,
   getPackageById,
   createPackage,
-  getAgencyPackages,
+  updatePackage,
+  deletePackage,
 };

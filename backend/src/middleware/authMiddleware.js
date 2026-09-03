@@ -22,15 +22,14 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ovizatri_default_jwt_secret');
+    const userId = decoded.user_id ?? decoded.id;
 
-    // Fetch the current account from the normalized authentication schema.
     const userResult = await db.query(
-      `SELECT account_id AS id, email, account_type AS role, created_at
+      `SELECT account_id AS id, account_id AS user_id, email, account_type AS role, created_at
        FROM account
        WHERE account_id = $1`,
-      [decoded.id]
+      [userId]
     );
 
     if (userResult.rows.length === 0) {
@@ -41,9 +40,12 @@ const authenticateToken = async (req, res, next) => {
     }
 
     const user = userResult.rows[0];
+    req.user = {
+      ...user,
+      user_id: user.user_id ?? user.id,
+      role: user.role || 'user',
+    };
 
-    // Attach user to request object
-    req.user = user;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -57,6 +59,29 @@ const authenticateToken = async (req, res, next) => {
       message: 'Invalid or malformed authentication token.',
     });
   }
+};
+
+const authorizeRole = (allowedRole) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized. Please log in first.',
+      });
+    }
+
+    const userRole = String(req.user.role || '').toLowerCase();
+    const normalizedAllowedRole = String(allowedRole || '').toLowerCase();
+
+    if (userRole !== normalizedAllowedRole) {
+      return res.status(403).json({
+        success: false,
+        message: `Forbidden. Access restricted to role: ${allowedRole}. Your role: ${req.user.role}`,
+      });
+    }
+
+    next();
+  };
 };
 
 /**
@@ -88,5 +113,6 @@ const authorizeRoles = (...allowedRoles) => {
 
 module.exports = {
   authenticateToken,
+  authorizeRole,
   authorizeRoles,
 };

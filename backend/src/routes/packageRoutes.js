@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const packageController = require('../controllers/packageController');
-const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
+const { authenticateToken, authorizeRole } = require('../middleware/authMiddleware');
 
-// Public routes
 router.get('/', packageController.getAllPackages);
 router.get('/:id', packageController.getPackageById);
-
-// Agency protected routes
-router.post('/', authenticateToken, authorizeRoles('agency', 'admin'), packageController.createPackage);
-router.get('/agency/my-packages', authenticateToken, authorizeRoles('agency'), packageController.getAgencyPackages);
+router.post('/', authenticateToken, authorizeRole('ADMIN'), packageController.createPackage);
+router.put('/:id', authenticateToken, authorizeRole('ADMIN'), packageController.updatePackage);
+router.delete('/:id', authenticateToken, authorizeRole('ADMIN'), packageController.deletePackage);
 
 module.exports = router;

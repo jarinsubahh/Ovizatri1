@@ -134,9 +134,79 @@ const verifyAgency = async (req, res) => {
   }
 };
 
+exports.getAllBlogsForAdmin = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    let query = `
+      SELECT 
+        b.*, 
+        a.account_type,
+        COALESCE(u.fullname, ad.admin_name, ag.agency_name, 'Ovizatri User') AS author_name
+      FROM blog b
+      JOIN account a ON b.account_id = a.account_id
+      LEFT JOIN app_user u ON a.account_id = u.account_id
+      LEFT JOIN admin ad ON a.account_id = ad.account_id
+      LEFT JOIN agency ag ON a.account_id = ag.account_id
+    `;
+    const params = [];
+
+    if (status) {
+      query += ` WHERE b.status = $1`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY b.blog_id DESC`;
+
+    const result = await db.query(query, params);
+    const blogs = result.rows || result[0];
+
+    res.status(200).json({ success: true, count: blogs.length, data: blogs });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+exports.updateBlogStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'published' or 'rejected'
+
+    if (!['published', 'rejected', 'pending', 'draft'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status provided' });
+    }
+
+    const publishDate = status === 'published' ? new Date() : null;
+
+    const query = `
+      UPDATE blog 
+      SET status = $1, publish_date = COALESCE(publish_date, $2)
+      WHERE blog_id = $3
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [status, publishDate, id]);
+    const updatedBlog = (result.rows && result.rows[0]) || result[0];
+
+    if (!updatedBlog) {
+      return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Blog status updated to '${status}'`,
+      data: updatedBlog,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAdminStats,
   getAllUsers,
   toggleUserStatus,
   verifyAgency,
+  getAllBlogsForAdmin: exports.getAllBlogsForAdmin,
+  updateBlogStatus: exports.updateBlogStatus,
 };
