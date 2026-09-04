@@ -19,6 +19,7 @@ const db = require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const blogRoutes = require('./routes/blogRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 // CORS configuration for frontend
 const allowedOrigins = [
@@ -104,6 +105,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/destinations', destinationRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Global 404 Route
 app.use((req, res) => {
