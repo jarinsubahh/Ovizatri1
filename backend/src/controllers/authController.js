@@ -56,10 +56,28 @@ const signupAgency = async (req, res) => {
   const client = await db.getClient();
   let transactionStarted = false;
   try {
-    const { agencyName, ownerName, email, password, phone, experience_years, websiteUrl, overview, street_address, thana, district, division, postalCode, tradeLicenseFileName } = req.body;
-    if (!agencyName?.trim() || !ownerName?.trim() || !email?.trim() || !password || !phone?.trim() || !street_address?.trim() || !district?.trim() || !division?.trim()) return res.status(400).json({ success: false, message: 'Agency name, owner name, email, password, phone, and complete address are required.' });
+    const agencyName = req.body.agencyName || req.body.agency_name;
+    const ownerName = req.body.ownerName || req.body.owner_name;
+    const email = req.body.email;
+    const password = req.body.password;
+    const phone = req.body.phone;
+    const experience_years = req.body.experience_years;
+    const websiteUrl = req.body.websiteUrl || req.body.website_url;
+    const overview = req.body.overview;
+    const street_address = req.body.street_address || req.body.address?.street_address;
+    const thana = req.body.thana || req.body.address?.thana;
+    const district = req.body.district || req.body.address?.district;
+    const division = req.body.division || req.body.address?.division;
+    const postalCode = req.body.postalCode || req.body.postal_code || req.body.address?.postal_code;
+    const tradeLicenseFileName = req.body.tradeLicenseFileName || req.body.trade_license_doc_url;
+
+    if (!agencyName?.trim() || !ownerName?.trim() || !email?.trim() || !password || !phone?.trim() || !street_address?.trim() || !district?.trim() || !division?.trim()) {
+      return res.status(400).json({ success: false, message: 'Agency name, owner name, email, password, phone, and complete address are required.' });
+    }
     const experience = Number(experience_years || 0);
-    if (!Number.isInteger(experience) || experience < 0) return res.status(400).json({ success: false, message: 'Years of experience must be a non-negative whole number.' });
+    if (!Number.isInteger(experience) || experience < 0) {
+      return res.status(400).json({ success: false, message: 'Years of experience must be a non-negative whole number.' });
+    }
     await client.query('BEGIN');
     transactionStarted = true;
     const normalizedEmail = email.trim().toLowerCase();
@@ -72,7 +90,7 @@ const signupAgency = async (req, res) => {
     const address = await client.query(`INSERT INTO address (street_address, thana, district, division, postal_code) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [street_address.trim(), thana?.trim() || null, district.trim(), division.trim(), postalCode?.trim() || null]);
     const account = await client.query(`INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'agency') RETURNING account_id, email, account_type, created_at`, [normalizedEmail, await bcrypt.hash(password, SALT_ROUNDS)]);
     const accountRow = account.rows[0];
-    const agency = await client.query(`INSERT INTO agency (account_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, website_url, trade_license_doc_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING agency_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, status, website_url, trade_license_doc_url`, [accountRow.account_id, address.rows[0].address_id, agencyName.trim(), ownerName.trim(), phone.trim(), experience, overview?.trim() || null, websiteUrl?.trim() || null, tradeLicenseFileName ? `/docs/${tradeLicenseFileName}` : null]);
+    const agency = await client.query(`INSERT INTO agency (account_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, website_url, trade_license_doc_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING agency_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, status, website_url, trade_license_doc_url`, [accountRow.account_id, address.rows[0].address_id, agencyName.trim(), ownerName.trim(), phone.trim(), experience, overview?.trim() || null, websiteUrl?.trim() || null, tradeLicenseFileName ? (tradeLicenseFileName.startsWith('http') || tradeLicenseFileName.startsWith('/') ? tradeLicenseFileName : `/docs/${tradeLicenseFileName}`) : null]);
     await client.query('COMMIT');
     transactionStarted = false;
     const user = { ...accountRow, id: accountRow.account_id, name: agency.rows[0].agency_name, role: 'agency', profile: { ...agency.rows[0], address: address.rows[0] } };
@@ -81,6 +99,14 @@ const signupAgency = async (req, res) => {
     if (transactionStarted) await client.query('ROLLBACK');
     return sendDatabaseError(res, error, 'Agency registration');
   } finally { client.release(); }
+};
+
+const register = async (req, res) => {
+  const type = (req.body.account_type || req.body.role || 'user').toLowerCase();
+  if (type === 'agency') {
+    return signupAgency(req, res);
+  }
+  return signupTraveler(req, res);
 };
 
 const accountSelect = `SELECT a.account_id AS id, a.email, a.password_hash, a.account_type AS role, a.created_at, u.user_id, u.username, u.fullname, u.gender, u.dob, u.phone, ag.agency_id, ag.agency_name, ag.owner_name, ag.experience_years, ag.overview, ag.status, ag.website_url, ag.trade_license_doc_url, ad.address_id, ad.street_address, ad.thana, ad.district, ad.division, ad.postal_code, adm.admin_id, adm.admin_name, adm.role_level FROM account a LEFT JOIN app_user u ON u.account_id = a.account_id LEFT JOIN agency ag ON ag.account_id = a.account_id LEFT JOIN address ad ON ad.address_id = ag.registered_address_id LEFT JOIN admin adm ON adm.account_id = a.account_id`;
@@ -122,4 +148,5 @@ const getCurrentUser = async (req, res) => {
 };
 
 const logout = (req, res) => res.status(200).json({ success: true, message: 'Logged out successfully.' });
-module.exports = { signupTraveler, signupAgency, login, getCurrentUser, logout, findAccountById };
+
+module.exports = { register, signupTraveler, signupAgency, login, getCurrentUser, logout, findAccountById };

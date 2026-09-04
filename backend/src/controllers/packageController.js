@@ -1,15 +1,15 @@
 const db = require('../config/db');
 
 async function getAgencyIdForAccount(accountId) {
-  const result = await db.query('SELECT agency_id FROM agency WHERE account_id = $1', [accountId]);
-  return result.rows[0]?.agency_id || null;
+  const result = await db.query('SELECT agency_id, status FROM agency WHERE account_id = $1', [accountId]);
+  return result.rows[0] || null;
 }
 
 const packageSelect = `
   SELECT p.package_id AS "packageID", p.title, p.price, p.duration, p.max_seat AS "maxSeat",
-         p.discount, p.description, p.destination_id AS "destinationID", p.agency_id AS "agencyID",
+         p.discount, p.description, p.status, p.destination_id AS "destinationID", p.agency_id AS "agencyID",
          d.name AS "destinationName", d.division AS "destinationDivision", d.category AS "destinationCategory",
-         a.agency_name AS "agencyName", a.status AS "agencyStatus"
+         a.agency_name AS "agencyName", a.phone AS "agencyPhone", a.status AS "agencyStatus"
   FROM tour_package p
   JOIN destination d ON d.destination_id = p.destination_id
   JOIN agency a ON a.agency_id = p.agency_id
@@ -37,14 +37,10 @@ async function attachAmenities(packages) {
   }));
 }
 
-/**
- * GET /api/packages
- * Public listing with filters: destination, category, search, minPrice, maxPrice
- */
-const getAllPackages = async (req, res) => {
+const getAllPackages = async (req, res, next) => {
   try {
     const { destination, minPrice, maxPrice, search, category } = req.query;
-    let query = packageSelect + ' WHERE 1=1';
+    let query = packageSelect + " WHERE p.status = 'approved'";
     const params = [];
     let i = 1;
 
@@ -80,30 +76,26 @@ const getAllPackages = async (req, res) => {
       packages: withAmenities,
     });
   } catch (error) {
-    console.error('Fetch packages error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch tour packages.' });
+    next(error);
   }
 };
 
-/**
- * GET /api/packages/featured
- * Ranked by average review rating, then popularity, then discount.
- */
-const getFeaturedPackages = async (req, res) => {
+const getFeaturedPackages = async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 6, 20);
     const query = `
       SELECT p.package_id AS "packageID", p.title, p.price, p.duration, p.max_seat AS "maxSeat",
-             p.discount, p.description, p.destination_id AS "destinationID", p.agency_id AS "agencyID",
+             p.discount, p.description, p.status, p.destination_id AS "destinationID", p.agency_id AS "agencyID",
              d.name AS "destinationName", d.category AS "destinationCategory",
-             a.agency_name AS "agencyName", a.status AS "agencyStatus",
+             a.agency_name AS "agencyName", a.phone AS "agencyPhone", a.status AS "agencyStatus",
              COALESCE(AVG(r.rating), 0)::numeric(3,2) AS "avgRating",
              COUNT(r.review_id) AS "reviewCount"
       FROM tour_package p
       JOIN destination d ON d.destination_id = p.destination_id
       JOIN agency a ON a.agency_id = p.agency_id
       LEFT JOIN review r ON r.package_id = p.package_id
-      GROUP BY p.package_id, d.name, d.category, a.agency_name, a.status
+      WHERE p.status = 'approved'
+      GROUP BY p.package_id, d.name, d.category, a.agency_name, a.phone, a.status
       ORDER BY "avgRating" DESC, "reviewCount" DESC, p.discount DESC, p.package_id DESC
       LIMIT $1
     `;
@@ -116,23 +108,14 @@ const getFeaturedPackages = async (req, res) => {
       packages: withAmenities,
     });
   } catch (error) {
-    console.error('Featured packages error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch featured packages.' });
-    console.error('Get all packages error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch packages.',
-    });
+    next(error);
   }
 };
 
-/**
- * GET /api/packages/:id
- */
-const getPackageById = async (req, res) => {
+const getPackageById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const result = await db.query(packageSelect + ' WHERE p.package_id = $1', [id]);
+    const result = await db.query(packageSelect + " WHERE p.package_id = $1 AND p.status = 'approved'", [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Package not found.' });
@@ -161,20 +144,14 @@ const getPackageById = async (req, res) => {
       package: { ...withAmenities, schedules: schedules.rows, reviews: reviews.rows },
     });
   } catch (error) {
-    console.error('Fetch single package error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch package details.' });
+    next(error);
   }
 };
 
-/**
- * POST /api/packages (Agency / Admin)
- */
-const createPackage = async (req, res) => {
+const createPackage = async (req, res, next) => {
   try {
-    const agencyId = await getAgencyIdForAccount(req.user.id);
-    if (!agencyId && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'No agency profile is associated with this account.' });
-    }
+    const accountId = req.user?.id || req.user?.account_id;
+    const role = req.user?.role || req.user?.account_type;
 
     const {
       title,
@@ -185,43 +162,83 @@ const createPackage = async (req, res) => {
       maxSeat,
       max_seat,
       price,
-      discount,
+      discount = 0,
       amenityIDs,
       agencyID,
     } = req.body;
 
     const destId = destinationID || destination_id;
-    const seats = maxSeat || max_seat || 20;
-    const disc = discount || 0;
+    const seats = maxSeat || max_seat;
 
-    if (!title || !destId || !price || !duration) {
+    if (!destId || !title || !price || !duration || !seats) {
       return res.status(400).json({
         success: false,
-        message: 'Title, destination, price, and duration are required.',
+        message: 'Destination ID, title, price, duration, and max seat are required.',
       });
     }
 
-    const finalAgencyId = req.user.role === 'admin' ? (agencyID || agencyId) : agencyId;
-    if (!finalAgencyId) {
-      return res.status(400).json({ success: false, message: 'An agency ID must be provided.' });
+    let targetAgencyId;
+
+    if (role === 'admin') {
+      targetAgencyId = agencyID;
+      if (!targetAgencyId) {
+        const agencyProfile = await getAgencyIdForAccount(accountId);
+        targetAgencyId = agencyProfile?.agency_id;
+      }
+      if (!targetAgencyId) {
+        return res.status(400).json({ success: false, message: 'An agency ID must be provided.' });
+      }
+    } else {
+      const agencyProfile = await getAgencyIdForAccount(accountId);
+      if (!agencyProfile) {
+        return res.status(404).json({ success: false, message: 'Agency profile not found.' });
+      }
+      if (agencyProfile.status !== 'verified') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only verified agencies can create tour packages.',
+        });
+      }
+      targetAgencyId = agencyProfile.agency_id;
     }
 
+    const destRes = await db.query(
+      `SELECT destination_id, status FROM destination WHERE destination_id = $1`,
+      [destId]
+    );
+
+    if (destRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Destination not found.' });
+    }
+
+    if (destRes.rows[0].status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot create a package for an unapproved destination.',
+      });
+    }
+
+    const initialStatus = role === 'admin' ? 'approved' : 'pending';
+
     const insertQuery = `
-      INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING package_id AS "packageID", agency_id AS "agencyID", destination_id AS "destinationID",
-                title, price, duration, max_seat AS "maxSeat", discount, description
+                title, price, duration, max_seat AS "maxSeat", discount, description, status
     `;
+
     const result = await db.query(insertQuery, [
-      finalAgencyId,
+      targetAgencyId,
       destId,
       title.trim(),
       Number(price),
       Number(duration),
       Number(seats),
-      Number(disc),
+      Number(discount),
       description || null,
+      initialStatus,
     ]);
+
     const created = result.rows[0];
 
     if (Array.isArray(amenityIDs) && amenityIDs.length > 0) {
@@ -231,24 +248,83 @@ const createPackage = async (req, res) => {
         ...amenityIDs,
       ]);
     }
+
     return res.status(201).json({
       success: true,
-      message: 'Tour package published successfully!',
+      message:
+        role === 'admin'
+          ? 'Tour package published successfully!'
+          : 'Tour package submitted successfully. Pending admin approval.',
       package: created,
     });
   } catch (error) {
     if (error.code === '23503') {
       return res.status(400).json({ success: false, message: 'Invalid destination or amenity reference.' });
     }
-    console.error('Create package error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to create tour package.' });
+    next(error);
   }
 };
 
-const updatePackage = async (req, res) => {
+const getPendingPackages = async (req, res, next) => {
+  try {
+    const query = `
+      SELECT 
+        p.*, 
+        d.name AS destination_name, 
+        ag.agency_name, 
+        ag.phone AS agency_phone
+      FROM tour_package p
+      JOIN destination d ON p.destination_id = d.destination_id
+      JOIN agency ag ON p.agency_id = ag.agency_id
+      WHERE p.status = 'pending'
+      ORDER BY p.package_id ASC
+    `;
+    const result = await db.query(query);
+    return res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updatePackageStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const existingResult = await db.query('SELECT * FROM packages WHERE package_id = $1', [id]);
+    const { status } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Status must be either 'approved' or 'rejected'.",
+      });
+    }
+
+    const result = await db.query(
+      `UPDATE tour_package SET status = $1 WHERE package_id = $2 RETURNING *`,
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tour package not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Tour package status updated to '${status}'.`,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updatePackage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const existingResult = await db.query('SELECT * FROM tour_package WHERE package_id = $1', [id]);
 
     if (existingResult.rows.length === 0) {
       return res.status(404).json({
@@ -257,47 +333,62 @@ const updatePackage = async (req, res) => {
       });
     }
 
-    const current = existingResult.rows[0];
     const {
       title,
       description,
-      destination,
+      destination_id,
+      destinationID,
+      duration,
       duration_days,
+      price,
       price_per_person,
-      max_capacity,
-      available_slots,
+      max_seat,
+      maxSeat,
+      discount,
+      status,
     } = req.body;
 
     const updateFields = [];
     const values = [];
 
-    if (title !== undefined) {
-      updateFields.push('title = $' + (updateFields.length + 1));
-      values.push(title);
+    const finalTitle = title;
+    const finalDesc = description;
+    const finalDest = destination_id || destinationID;
+    const finalDuration = duration !== undefined ? duration : duration_days;
+    const finalPrice = price !== undefined ? price : price_per_person;
+    const finalMaxSeat = max_seat !== undefined ? max_seat : maxSeat;
+
+    if (finalTitle !== undefined) {
+      updateFields.push(`title = $${values.length + 1}`);
+      values.push(finalTitle.trim());
     }
-    if (description !== undefined) {
-      updateFields.push('description = $' + (updateFields.length + 1));
-      values.push(description);
+    if (finalDesc !== undefined) {
+      updateFields.push(`description = $${values.length + 1}`);
+      values.push(finalDesc);
     }
-    if (destination !== undefined) {
-      updateFields.push('destination = $' + (updateFields.length + 1));
-      values.push(destination);
+    if (finalDest !== undefined) {
+      updateFields.push(`destination_id = $${values.length + 1}`);
+      values.push(finalDest);
     }
-    if (duration_days !== undefined) {
-      updateFields.push('duration_days = $' + (updateFields.length + 1));
-      values.push(Number(duration_days));
+    if (finalDuration !== undefined) {
+      updateFields.push(`duration = $${values.length + 1}`);
+      values.push(Number(finalDuration));
     }
-    if (price_per_person !== undefined) {
-      updateFields.push('price_per_person = $' + (updateFields.length + 1));
-      values.push(Number(price_per_person));
+    if (finalPrice !== undefined) {
+      updateFields.push(`price = $${values.length + 1}`);
+      values.push(Number(finalPrice));
     }
-    if (max_capacity !== undefined) {
-      updateFields.push('max_capacity = $' + (updateFields.length + 1));
-      values.push(Number(max_capacity));
+    if (finalMaxSeat !== undefined) {
+      updateFields.push(`max_seat = $${values.length + 1}`);
+      values.push(Number(finalMaxSeat));
     }
-    if (available_slots !== undefined) {
-      updateFields.push('available_slots = $' + (updateFields.length + 1));
-      values.push(Number(available_slots));
+    if (discount !== undefined) {
+      updateFields.push(`discount = $${values.length + 1}`);
+      values.push(Number(discount));
+    }
+    if (status !== undefined) {
+      updateFields.push(`status = $${values.length + 1}`);
+      values.push(status);
     }
 
     if (updateFields.length === 0) {
@@ -307,18 +398,8 @@ const updatePackage = async (req, res) => {
       });
     }
 
-    const nextMaxCapacity = max_capacity !== undefined ? Number(max_capacity) : Number(current.max_capacity);
-    const nextAvailableSlots = available_slots !== undefined ? Number(available_slots) : Number(current.available_slots);
-
-    if (nextAvailableSlots > nextMaxCapacity) {
-      return res.status(400).json({
-        success: false,
-        message: 'available_slots cannot be greater than max_capacity.',
-      });
-    }
-
     values.push(id);
-    const query = `UPDATE packages SET ${updateFields.join(', ')} WHERE package_id = $${values.length} RETURNING *`;
+    const query = `UPDATE tour_package SET ${updateFields.join(', ')} WHERE package_id = $${values.length} RETURNING *`;
     const result = await db.query(query, values);
 
     return res.status(200).json({
@@ -326,24 +407,18 @@ const updatePackage = async (req, res) => {
       package: result.rows[0],
     });
   } catch (error) {
-    console.error('Update package error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to update package.',
-    });
+    next(error);
   }
 };
 
-/**
- * GET /api/packages/agency/my-packages (Agency)
- */
-const getAgencyPackages = async (req, res) => {
+const getAgencyPackages = async (req, res, next) => {
   try {
-    const agencyId = await getAgencyIdForAccount(req.user.id);
-    if (!agencyId) {
+    const accountId = req.user?.id || req.user?.account_id;
+    const agencyProfile = await getAgencyIdForAccount(accountId);
+    if (!agencyProfile) {
       return res.status(404).json({ success: false, message: 'No agency profile found for this account.' });
     }
-    const result = await db.query(packageSelect + ' WHERE p.agency_id = $1 ORDER BY p.package_id DESC', [agencyId]);
+    const result = await db.query(packageSelect + ' WHERE p.agency_id = $1 ORDER BY p.package_id DESC', [agencyProfile.agency_id]);
     const withAmenities = await attachAmenities(result.rows);
 
     return res.status(200).json({
@@ -352,12 +427,11 @@ const getAgencyPackages = async (req, res) => {
       packages: withAmenities,
     });
   } catch (error) {
-    console.error('Fetch agency packages error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch agency tour packages.' });
+    next(error);
   }
 };
 
-const deletePackage = async (req, res) => {
+const deletePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await db.query('DELETE FROM tour_package WHERE package_id = $1 RETURNING *', [id]);
@@ -372,8 +446,7 @@ const deletePackage = async (req, res) => {
       package: result.rows[0],
     });
   } catch (error) {
-    console.error('Delete package error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to delete package.' });
+    next(error);
   }
 };
 
@@ -382,6 +455,8 @@ module.exports = {
   getFeaturedPackages,
   getPackageById,
   createPackage,
+  getPendingPackages,
+  updatePackageStatus,
   getAgencyPackages,
   updatePackage,
   deletePackage,
