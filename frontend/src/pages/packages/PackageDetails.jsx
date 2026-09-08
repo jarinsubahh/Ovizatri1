@@ -160,15 +160,18 @@ export default function PackageDetails() {
               <p className="hint" style={{ marginBottom: 16 }}>per person</p>
 
               <button className="btn btn-primary btn-block" onClick={handleBook}>
-                Book This Package
-              </button>
-              <button
-                className="btn btn-outline btn-block"
-                style={{ marginTop: 10 }}
-                onClick={handleSave}
-              >
-                {saved ? 'Saved to Dashboard' : 'Save Package'}
-              </button>
+  Book This Package
+</button>
+{/* Admins and Agencies cannot save packages to a personal wishlist */}
+{(!account || account.accountType === 'user') && (
+  <button
+    className="btn btn-outline btn-block"
+    style={{ marginTop: 10 }}
+    onClick={handleSave}
+  >
+    {saved ? 'Saved to Dashboard' : 'Save Package'}
+  </button>
+)}
             </div>
           </aside>
         </div>

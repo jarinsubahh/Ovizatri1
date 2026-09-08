@@ -69,17 +69,19 @@ export default function FeaturedPackages() {
             <Link to={`/packages/${p.packageID}`} key={p.packageID} className="pkg-card">
               <div className="pkg-card-media">
                 {destination && <img src={destination.image} alt={destination.name} loading="lazy" />}
-                <button
-                  type="button"
-                  className={'pkg-wishlist-btn' + (saved ? ' active' : '')}
-                  onClick={(e) => handleWishlist(e, p.packageID)}
-                  aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
-                  aria-pressed={saved}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8">
-                    <path d="M12 21s-7.5-4.6-10-9.3C0.3 8 1.8 4.5 5.2 3.7 7.6 3.1 10 4.2 12 6.4c2-2.2 4.4-3.3 6.8-2.7 3.4 0.8 4.9 4.3 3.2 8-2.5 4.7-10 9.3-10 9.3Z" />
-                  </svg>
-                </button>
+                {(!account || account.accountType === 'user') && (
+  <button
+    type="button"
+    className={'pkg-wishlist-btn' + (saved ? ' active' : '')}
+    onClick={(e) => handleWishlist(e, p.packageID)}
+    aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+    aria-pressed={saved}
+  >
+    <svg viewBox="0 0 24 24" width="18" height="18" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 21s-7.5-4.6-10-9.3C0.3 8 1.8 4.5 5.2 3.7 7.6 3.1 10 4.2 12 6.4c2-2.2 4.4-3.3 6.8-2.7 3.4 0.8 4.9 4.3 3.2 8-2.5 4.7-10 9.3-10 9.3Z" />
+    </svg>
+  </button>
+)}
                 {p.discount > 0 && <span className="badge badge-gold pkg-card-badge">{p.discount}% off</span>}
               </div>
               <div className="pkg-card-body">

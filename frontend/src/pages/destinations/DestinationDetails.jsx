@@ -89,9 +89,11 @@ export default function DestinationDetails() {
               <p className="detail-body-text" style={{ fontSize: '0.86rem' }}>
                 Save this destination to your dashboard or compare the tour packages offered here.
               </p>
-              <button className="btn btn-block" onClick={handleSave} style={saved ? { background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--forest-dark)' } : { background: 'var(--forest)', color: 'var(--paper)' }}>
-                {saved ? 'Saved to Dashboard' : 'Save Destination'}
-              </button>
+              {(!account || account.accountType === 'user') && (
+  <button className="btn btn-block" onClick={handleSave} style={saved ? { background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--forest-dark)' } : { background: 'var(--forest)', color: 'var(--paper)' }}>
+    {saved ? 'Saved to Dashboard' : 'Save Destination'}
+  </button>
+)}
               <Link to="/packages" className="btn btn-outline btn-block" style={{ marginTop: 10 }}>
                 Browse All Packages
               </Link>

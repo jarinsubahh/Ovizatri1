@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const wishlistController = require('../controllers/wishlistController');
-const { authenticateToken } = require('../middleware/authMiddleware');
+const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
 
-// All wishlist routes require authentication — authenticateToken
-// returns 401 Unauthorized automatically when no valid token is present.
+// Protect all wishlist routes: requires auth and strictly 'user' (traveler) role
 router.use(authenticateToken);
+router.use(authorizeRoles('user'));
 
 router.get('/', wishlistController.getWishlist);
 router.post('/toggle', wishlistController.toggleWishlist);

@@ -39,9 +39,6 @@ export default function Navbar() {
     navigate('/')
   }
 
-  // Frontend-only auth gate: signed-in travelers go straight to their
-  // wishlist, everyone else is routed to sign in with a return path so
-  // ProtectedRoute sends them back to /wishlist after authenticating.
   function handleWishlistClick() {
     setMenuOpen(false)
     if (account) {
@@ -50,6 +47,9 @@ export default function Navbar() {
       navigate('/signin', { state: { from: { pathname: '/wishlist' } } })
     }
   }
+
+  // Wishlist is ONLY visible to travelers (role === 'user') or logged-out guests
+  const showWishlist = !account || role === 'user'
 
   const dashboardPath = role === 'agency' ? '/agency/dashboard' : role === 'admin' ? '/admin' : '/dashboard'
   const displayName =
@@ -72,9 +72,11 @@ export default function Navbar() {
               {l.label}
             </NavLink>
           ))}
-          <button type="button" className="nav-link nav-link-btn" onClick={handleWishlistClick}>
-            Wishlist
-          </button>
+          {showWishlist && (
+            <button type="button" className="nav-link nav-link-btn" onClick={handleWishlistClick}>
+              Wishlist
+            </button>
+          )}
         </nav>
 
         <div className="nav-actions">
@@ -126,9 +128,11 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
-          <button type="button" onClick={handleWishlistClick}>
-            Wishlist
-          </button>
+          {showWishlist && (
+            <button type="button" onClick={handleWishlistClick}>
+              Wishlist
+            </button>
+          )}
           {!account ? (
             <>
               <Link to="/signin">Sign In</Link>
