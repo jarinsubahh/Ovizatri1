@@ -126,17 +126,55 @@ const toUserPayload = (row) => {
   }
   return user;
 };
-
 const login = async (req, res) => {
   try {
     const identifier = (req.body.email || req.body.username || '').trim().toLowerCase();
     const { password } = req.body;
-    if (!identifier || !password) return res.status(400).json({ success: false, message: 'Email/username and password are required.' });
+    if (!identifier || !password) {
+      return res.status(400).json({ success: false, message: 'Email/username and password are required.' });
+    }
+
     const row = await findAccount(identifier);
-    if (!row || !(await bcrypt.compare(password, row.password_hash))) return res.status(401).json({ success: false, message: 'Invalid email/username or password.' });
+    if (!row || !(await bcrypt.compare(password, row.password_hash))) {
+      return res.status(401).json({ success: false, message: 'Invalid email/username or password.' });
+    }
+
+    // Agency status verification gate
+    if (row.role === 'agency') {
+      const agencyStatus = row.status || 'pending_review';
+      if (agencyStatus === 'pending_review') {
+        return res.status(403).json({
+          success: false,
+          agencyStatus: 'pending_review',
+          message: 'Your agency registration is pending review by the platform administrator. Please wait for approval before signing in.'
+        });
+      }
+      if (agencyStatus === 'rejected') {
+        return res.status(403).json({
+          success: false,
+          agencyStatus: 'rejected',
+          message: 'Your agency registration has been rejected by the administrator. Contact support for more details.'
+        });
+      }
+      if (agencyStatus === 'suspended') {
+        return res.status(403).json({
+          success: false,
+          agencyStatus: 'suspended',
+          message: 'Your agency account has been suspended by the administrator.'
+        });
+      }
+    }
+
     const user = toUserPayload(row);
-    return res.status(200).json({ success: true, message: `Welcome back, ${user.name}!`, token: generateToken({ ...user, name: user.name }), user });
-  } catch (error) { return sendDatabaseError(res, error, 'login'); }
+    return res.status(200).json({
+      success: true,
+      message: `Welcome back, ${user.name}!`,
+      token: generateToken({ ...user, name: user.name }),
+      user
+    });
+  } catch (error) {
+    return sendDatabaseError(res, error, 'login');
+  }
 };
 
 const getCurrentUser = async (req, res) => {

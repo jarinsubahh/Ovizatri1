@@ -62,9 +62,54 @@ const getAllUsers = async (req, res) => {
 };
 
 /**
+ * GET /api/admin/agencies
+ * Fetch all registered agencies with address, license details, and status
+ */
+const getAllAgencies = async (req, res) => {
+  try {
+    const { status } = req.query;
+    let query = `
+      SELECT 
+        ag.agency_id,
+        ag.account_id,
+        ag.agency_name,
+        ag.owner_name,
+        ag.phone,
+        ag.experience_years,
+        ag.overview,
+        ag.status,
+        ag.website_url,
+        ag.trade_license_doc_url,
+        a.email,
+        a.created_at AS registered_at,
+        ad.street_address,
+        ad.thana,
+        ad.district,
+        ad.division,
+        ad.postal_code
+      FROM agency ag
+      JOIN account a ON a.account_id = ag.account_id
+      LEFT JOIN address ad ON ad.address_id = ag.registered_address_id
+    `;
+    const params = [];
+
+    if (status && status !== 'all') {
+      query += ` WHERE ag.status = $1`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY a.created_at DESC`;
+
+    const result = await db.query(query, params);
+    return res.status(200).json({ success: true, agencies: result.rows });
+  } catch (error) {
+    console.error('Admin get agencies error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch agencies list.' });
+  }
+};
+
+/**
  * PATCH /api/admin/users/:id/status
- * The current normalized schema has no generic is_active flag on `account`;
- * activation state is modeled through `agency.status` for agency accounts.
  */
 const toggleUserStatus = async (req, res) => {
   try {
@@ -97,48 +142,64 @@ const toggleUserStatus = async (req, res) => {
 
 /**
  * PATCH /api/admin/agencies/:agencyUserId/verify
- * :agencyUserId is the agency's account_id.
+ * Accepts either agency_id or account_id
  */
 const verifyAgency = async (req, res) => {
   try {
     const { agencyUserId } = req.params;
-    const { isVerified, notes } = req.body;
-    const status = isVerified === false ? 'rejected' : 'verified';
+    const { isVerified, status: explicitStatus, notes } = req.body;
+
+    let targetStatus = explicitStatus;
+    if (!targetStatus) {
+      targetStatus = isVerified === false ? 'rejected' : 'verified';
+    }
+
+    if (!['verified', 'rejected', 'suspended', 'pending_review'].includes(targetStatus)) {
+      return res.status(400).json({ success: false, message: 'Invalid status provided.' });
+    }
 
     const result = await db.query(
-      `UPDATE agency SET status = $1 WHERE account_id = $2
+      `UPDATE agency 
+       SET status = $1 
+       WHERE agency_id = $2 OR account_id = $2
        RETURNING agency_id, account_id, agency_name, status`,
-      [status, agencyUserId]
+      [targetStatus, agencyUserId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Agency profile not found.' });
     }
 
+    const updatedAgency = result.rows[0];
+
+    // Log the change into agency_audit_log
     const admin = await db.query('SELECT admin_id FROM admin WHERE account_id = $1', [req.user.id]);
     if (admin.rows.length > 0) {
       await db.query(
         `INSERT INTO agency_audit_log (admin_id, agency_id, notes, status_changed_to)
          VALUES ($1, $2, $3, $4)`,
-        [admin.rows[0].admin_id, result.rows[0].agency_id, notes || `Status changed to ${status} by admin.`, status]
+        [admin.rows[0].admin_id, updatedAgency.agency_id, notes || `Status changed to ${targetStatus} by admin.`, targetStatus]
       );
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Agency verification status updated successfully.',
-      agency: result.rows[0],
+      message: `Agency status updated to '${targetStatus}'.`,
+      agency: updatedAgency,
     });
   } catch (error) {
     console.error('Verify agency error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to verify agency.',
+      message: 'Failed to update agency status.',
     });
   }
 };
 
-exports.getAllBlogsForAdmin = async (req, res, next) => {
+/**
+ * GET /api/admin/blogs
+ */
+const getAllBlogsForAdmin = async (req, res, next) => {
   try {
     const { status } = req.query;
     let query = `
@@ -170,11 +231,13 @@ exports.getAllBlogsForAdmin = async (req, res, next) => {
   }
 };
 
-
-exports.updateBlogStatus = async (req, res, next) => {
+/**
+ * PATCH /api/admin/blogs/:id/status
+ */
+const updateBlogStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'published' or 'rejected'
+    const { status } = req.body;
 
     if (!['published', 'rejected', 'pending', 'draft'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status provided' });
@@ -209,8 +272,9 @@ exports.updateBlogStatus = async (req, res, next) => {
 module.exports = {
   getAdminStats,
   getAllUsers,
+  getAllAgencies,
   toggleUserStatus,
   verifyAgency,
-  getAllBlogsForAdmin: exports.getAllBlogsForAdmin,
-  updateBlogStatus: exports.updateBlogStatus,
+  getAllBlogsForAdmin,
+  updateBlogStatus,
 };

@@ -1,9 +1,7 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardShell from '../../components/layout/DashboardShell'
 import { useAuth } from '../../context/AuthContext'
-import { agencies } from '../../data/mockData'
-import { listAuditLog, listBookings, listPackages } from '../../data/store'
 import '../../components/layout/DashboardShell.css'
 
 const NAV_ITEMS = [
@@ -14,44 +12,116 @@ const NAV_ITEMS = [
 
 export default function AdminDashboard() {
   const { account } = useAuth()
-  const pendingAgencies = agencies.filter((a) => a.status === 'pending_review')
-  const packages = listPackages()
-  const bookings = listBookings()
-  const auditEntries = listAuditLog()
+  const [stats, setStats] = useState({
+    totalAccounts: 0,
+    totalTravelers: 0,
+    totalAgencies: 0,
+    totalAdmins: 0,
+    totalPackages: 0,
+    totalBookings: 0,
+    totalRevenue: 0,
+  })
+  const [pendingAgencies, setPendingAgencies] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+  useEffect(() => {
+    async function loadAdminData() {
+      try {
+        setLoading(true)
+        // 1. Fetch live admin stats
+        const statsRes = await fetch(`${API_URL}/admin/stats`, {
+          headers: { Authorization: `Bearer ${account?.token}` }
+        })
+        const statsData = await statsRes.json()
+
+        if (statsRes.ok && statsData.stats) {
+          const u = statsData.stats.users || {}
+          const p = statsData.stats.packages || {}
+          const b = statsData.stats.bookings || {}
+
+          setStats({
+            totalAccounts: Number(u.total_accounts || 0),
+            totalTravelers: Number(u.total_travelers || 0),
+            totalAgencies: Number(u.total_agencies || 0),
+            totalAdmins: Number(u.total_admins || 0),
+            totalPackages: Number(p.total_packages || 0),
+            totalBookings: Number(b.total_bookings || 0),
+            totalRevenue: Number(b.total_revenue || 0),
+          })
+        }
+
+        // 2. Fetch agencies pending review
+        const agenciesRes = await fetch(`${API_URL}/admin/agencies?status=pending_review`, {
+          headers: { Authorization: `Bearer ${account?.token}` }
+        })
+        const agenciesData = await agenciesRes.json()
+        if (agenciesRes.ok) {
+          setPendingAgencies(agenciesData.agencies || [])
+        }
+      } catch (err) {
+        console.error('Error loading admin dashboard:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (account?.token) {
+      loadAdminData()
+    } else {
+      setLoading(false)
+    }
+  }, [account, API_URL])
 
   return (
-    <DashboardShell title={account.adminName} subtitle="Administrator" items={NAV_ITEMS}>
+    <DashboardShell title={account?.adminName || 'Admin'} subtitle="Administrator" items={NAV_ITEMS}>
       <div className="dash-section-title">
         <h1>Platform Overview</h1>
       </div>
 
       <div className="stat-grid">
         <div className="stat-card">
-          <div className="stat-value">{agencies.length}</div>
+          <div className="stat-value">{stats.totalAgencies}</div>
           <div className="stat-label">Registered Agencies</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{pendingAgencies.length}</div>
+          <div className="stat-value" style={{ color: pendingAgencies.length > 0 ? 'var(--gold-dark)' : undefined }}>
+            {pendingAgencies.length}
+          </div>
           <div className="stat-label">Pending Review</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{packages.length}</div>
+          <div className="stat-value">{stats.totalPackages}</div>
           <div className="stat-label">Tour Packages</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{bookings.length}</div>
+          <div className="stat-value">{stats.totalBookings}</div>
           <div className="stat-label">Total Bookings</div>
         </div>
       </div>
 
       {pendingAgencies.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 20 }}>
-          <h3 style={{ marginTop: 0 }}>Agencies awaiting review</h3>
-          <ul style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <h3 style={{ marginTop: 0 }}>Agencies Awaiting Review ({pendingAgencies.length})</h3>
+          <ul style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {pendingAgencies.map((a) => (
-              <li key={a.agencyID} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
-                <span>{a.agencyName}</span>
-                <Link to="/admin/agencies" className="hint">
+              <li
+                key={a.agency_id || a.agencyID}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '0.9rem',
+                  borderBottom: '1px solid var(--line)',
+                  paddingBottom: 8,
+                }}
+              >
+                <div>
+                  <strong>{a.agency_name || a.agencyName}</strong>
+                  <div className="hint">{a.phone || a.email}</div>
+                </div>
+                <Link to="/admin/agencies" className="btn btn-outline btn-sm">
                   Review &rarr;
                 </Link>
               </li>
@@ -61,19 +131,15 @@ export default function AdminDashboard() {
       )}
 
       <div className="card card-pad">
-        <h3 style={{ marginTop: 0 }}>Recent audit log entries</h3>
-        {auditEntries.slice(0, 5).map((a) => {
-          const agency = agencies.find((ag) => ag.agencyID === a.agencyID)
-          return (
-            <div key={a.id} style={{ fontSize: '0.88rem', color: 'var(--ink-soft)', borderBottom: '1px solid var(--line)', padding: '10px 0' }}>
-              <strong style={{ color: 'var(--ink)' }}>{agency?.agencyName}</strong> &rarr; {a.status_changed_to.replace('_', ' ')}
-              <div className="hint">{new Date(a.timeStamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-            </div>
-          )
-        })}
-        <Link to="/admin/audit-log" className="hint" style={{ display: 'inline-block', marginTop: 10 }}>
-          View full audit log &rarr;
-        </Link>
+        <h3 style={{ marginTop: 0 }}>Platform Quick Actions</h3>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Link to="/admin/agencies" className="btn btn-primary btn-sm">
+            Manage All Agencies
+          </Link>
+          <Link to="/admin/audit-log" className="btn btn-outline btn-sm">
+            View Audit Log
+          </Link>
+        </div>
       </div>
     </DashboardShell>
   )

@@ -31,6 +31,7 @@ export default function AgencySignUp() {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [formError, setFormError] = useState('')
+  const [submittedSuccess, setSubmittedSuccess] = useState(false)
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target
@@ -69,7 +70,87 @@ export default function AgencySignUp() {
       setFormError(result.error)
       return
     }
-    navigate('/agency/dashboard', { replace: true })
+
+    // Switch to success state rather than redirecting to dashboard
+    setSubmittedSuccess(true)
+  }
+
+  // Submission acknowledgement view
+  if (submittedSuccess) {
+    return (
+      <div className="auth-page">
+        <div className="auth-panel" style={{ flex: 1 }}>
+          <div 
+            className="auth-card" 
+            style={{ 
+              maxWidth: '560px', 
+              textAlign: 'center',
+              padding: '40px 32px',
+              background: 'var(--paper)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--radius-m)',
+              boxShadow: 'var(--shadow-pop)'
+            }}
+          >
+            <div 
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(201, 161, 90, 0.2)',
+                color: 'var(--gold-dark)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '2rem',
+                margin: '0 auto 20px'
+              }}
+            >
+              ⏳
+            </div>
+
+            <p className="eyebrow" style={{ color: 'var(--gold-dark)' }}>Registration Submitted</p>
+            <h1 style={{ fontSize: '1.9rem', marginBottom: '12px' }}>Awaiting Admin Approval</h1>
+
+            <div 
+              style={{
+                background: 'var(--sand)',
+                border: '1px solid var(--line-strong)',
+                borderRadius: 'var(--radius-s)',
+                padding: '16px 20px',
+                margin: '20px 0 24px',
+                textAlign: 'left',
+                fontSize: '0.92rem',
+                color: 'var(--ink)'
+              }}
+            >
+              <p style={{ margin: '0 0 10px', lineHeight: 1.6 }}>
+                Thank you for registering <strong>{form.agencyName}</strong> on OVIZATRI.
+              </p>
+              <p style={{ margin: 0, color: 'var(--ink-soft)', lineHeight: 1.6 }}>
+                Your documents and trade license details have been queued for administrative moderation. You will be able to log in to your agency portal once an administrator approves your verification request.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+              <button 
+                onClick={() => {
+                  window.location.href = '/'
+                }} 
+                className="btn btn-primary"
+                style={{ width: '100%', maxWidth: '280px' }}
+              >
+                Return to Home Page
+              </button>
+
+              <Link to="/agency/signin" className="hint" style={{ textDecoration: 'underline' }}>
+                Go to Agency Sign In
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -200,7 +281,7 @@ export default function AgencySignUp() {
       </div>
 
       <div className="auth-side">
-        <img src={bichanakandi} alt="" />
+        <img src={bichanakandi} alt="Bichanakandi" />
         <div className="auth-side-scrim">
           <blockquote>&ldquo;Clear hill streams running over boulders at the foot of the Khasi Hills.&rdquo;</blockquote>
         </div>

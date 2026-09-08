@@ -80,13 +80,13 @@ export function AuthProvider({ children }) {
   async function signUpAgency(form) {
     try {
       const data = await request('/auth/signup/agency', { method: 'POST', body: JSON.stringify(form) })
-      persist(accountFromUser(data.user, data.token))
-      return { ok: true }
+      // Notice: We DO NOT call persist(...) here!
+      // This ensures the agency is NOT logged in and no token is saved.
+      return { ok: true, message: data.message }
     } catch (error) {
       return { ok: false, error: error.message }
     }
   }
-
   function logout() { persist(null) }
 
   return <AuthContext.Provider value={{ account, role: account?.accountType ?? null, loading, login, logout, signUpUser, signUpAgency }}>{children}</AuthContext.Provider>
