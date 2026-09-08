@@ -93,14 +93,18 @@ export function listSaved(userID) {
 }
 
 export function isSaved(userID, type, id) {
-  return read(KEYS.saved, []).some((s) => s.userID === userID && s.type === type && s.id === id)
+  return read(KEYS.saved, []).some(
+    (s) => String(s.userID) === String(userID) && s.type === type && String(s.id) === String(id)
+  )
 }
 
 export function toggleSaved(userID, type, id) {
   const saved = read(KEYS.saved, [])
-  const exists = saved.find((s) => s.userID === userID && s.type === type && s.id === id)
+  const exists = saved.find(
+    (s) => String(s.userID) === String(userID) && s.type === type && String(s.id) === String(id)
+  )
   const updated = exists
-    ? saved.filter((s) => !(s.userID === userID && s.type === type && s.id === id))
+    ? saved.filter((s) => !(String(s.userID) === String(userID) && s.type === type && String(s.id) === String(id)))
     : [...saved, { userID, type, id, savedAt: new Date().toISOString() }]
   write(KEYS.saved, updated)
   return !exists

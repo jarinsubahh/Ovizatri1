@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router-dom'
 import DashboardShell from '../../components/layout/DashboardShell'
 import { useAuth } from '../../context/AuthContext'
@@ -18,7 +18,7 @@ export default function UserDashboard() {
   const { account } = useAuth()
 
   return (
-    <DashboardShell title={account.fullname} subtitle="Traveler" items={NAV_ITEMS}>
+    <DashboardShell title={account?.fullname || 'Traveler'} subtitle="Traveler" items={NAV_ITEMS}>
       <Routes>
         <Route index element={<Overview />} />
         <Route path="bookings" element={<Bookings />} />
@@ -32,14 +32,15 @@ export default function UserDashboard() {
 
 function Overview() {
   const { account } = useAuth()
-  const bookings = listBookingsForUser(account.userID)
-  const saved = listSaved(account.userID)
-  const blogs = listBlogsByAccount(account.accountID)
+  const uid = account?.userID || account?.accountID
+  const bookings = listBookingsForUser(uid)
+  const saved = listSaved(uid)
+  const blogs = listBlogsByAccount(account?.accountID)
 
   return (
     <div>
       <div className="dash-section-title">
-        <h1>Welcome back, {account.fullname.split(' ')[0]}</h1>
+        <h1>Welcome back, {(account?.fullname || 'Traveler').split(' ')[0]}</h1>
       </div>
       <div className="stat-grid">
         <div className="stat-card">
@@ -76,7 +77,8 @@ function Overview() {
 
 function Bookings() {
   const { account } = useAuth()
-  const bookings = listBookingsForUser(account.userID)
+  const uid = account?.userID || account?.accountID
+  const bookings = listBookingsForUser(uid)
 
   return (
     <div>
@@ -112,7 +114,7 @@ function Bookings() {
                     <td>{pkg?.title || b.packageID}</td>
                     <td>{new Date(b.bookingDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
                     <td>{b.groupSize || 1}</td>
-                    <td>৳{b.totalAmount.toLocaleString()}</td>
+                    <td>৳{b.totalAmount?.toLocaleString()}</td>
                     <td>
                       <span className={'badge ' + (b.paymentStatus === 'paid' ? 'badge-success' : 'badge-gold')}>{b.paymentStatus}</span>
                     </td>
@@ -134,7 +136,34 @@ function Bookings() {
 
 function Saved() {
   const { account } = useAuth()
-  const saved = listSaved(account.userID)
+  const uid = account?.userID || account?.accountID
+  const [saved, setSaved] = useState([])
+  const [destinations, setDestinations] = useState([])
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+  useEffect(() => {
+    async function loadData() {
+      setSaved(listSaved(uid))
+      try {
+        const res = await fetch(`${API_URL}/destinations`)
+        const data = await res.json()
+        if (res.ok && data.destinations) {
+          setDestinations(data.destinations)
+        }
+      } catch (err) {
+        console.error('Failed to load destinations:', err)
+      }
+    }
+    if (uid) {
+      loadData()
+    }
+  }, [uid, API_URL])
+
+  function resolveDest(id) {
+    const fromApi = destinations.find((d) => String(d.destinationID || d.destination_id) === String(id))
+    if (fromApi) return fromApi
+    return getDestination(id)
+  }
 
   return (
     <div>
@@ -150,12 +179,15 @@ function Saved() {
         <div className="card-grid">
           {saved.map((s) => {
             if (s.type === 'destination') {
-              const d = getDestination(s.id)
+              const d = resolveDest(s.id)
               if (!d) return null
               return (
-                <Link key={s.id + s.type} to={`/destinations/${d.destinationID}`} className="item-card">
+                <Link key={s.id + s.type} to={`/destinations/${d.destinationID || d.destination_id}`} className="item-card">
                   <div className="item-card-media">
-                    <img src={d.image} alt={d.name} />
+                    <img 
+                      src={d.image || d.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'} 
+                      alt={d.name} 
+                    />
                     <span className="badge item-card-badge">Destination</span>
                   </div>
                   <div className="item-card-body">
@@ -167,16 +199,19 @@ function Saved() {
             }
             const p = getPackage(s.id)
             if (!p) return null
-            const destination = getDestination(p.destinationID)
+            const destination = resolveDest(p.destinationID)
             return (
               <Link key={s.id + s.type} to={`/packages/${p.packageID}`} className="item-card">
                 <div className="item-card-media">
-                  {destination && <img src={destination.image} alt={destination.name} />}
+                  <img 
+                    src={destination?.image || destination?.image_url || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'} 
+                    alt={destination?.name || p.title} 
+                  />
                   <span className="badge badge-river item-card-badge">Package</span>
                 </div>
                 <div className="item-card-body">
                   <h3>{p.title}</h3>
-                  <span className="item-card-meta">৳{p.price.toLocaleString()}</span>
+                  <span className="item-card-meta">৳{p.price?.toLocaleString()}</span>
                 </div>
               </Link>
             )
@@ -189,7 +224,7 @@ function Saved() {
 
 function MyBlogs() {
   const { account } = useAuth()
-  const blogs = listBlogsByAccount(account.accountID)
+  const blogs = listBlogsByAccount(account?.accountID)
 
   return (
     <div>
@@ -245,8 +280,12 @@ function MyBlogs() {
 
 function Profile() {
   const { account } = useAuth()
-  const navigate = useNavigate()
-  const [form, setForm] = useState({ fullname: account.fullname, phone: account.phone, gender: account.gender, dob: account.dob })
+  const [form, setForm] = useState({ 
+    fullname: account?.fullname || '', 
+    phone: account?.phone || '', 
+    gender: account?.gender || '', 
+    dob: account?.dob || '' 
+  })
   const [saved, setSaved] = useState(false)
 
   function handleChange(e) {
@@ -255,7 +294,6 @@ function Profile() {
 
   function handleSubmit(e) {
     e.preventDefault()
-    // Profile edits are local-only in this prototype (no backend yet).
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
@@ -270,11 +308,11 @@ function Profile() {
         <form onSubmit={handleSubmit}>
           <div className="field">
             <label htmlFor="username">Username</label>
-            <input id="username" value={account.username} disabled />
+            <input id="username" value={account?.username || ''} disabled />
           </div>
           <div className="field">
             <label htmlFor="email">Email</label>
-            <input id="email" value={account.email} disabled />
+            <input id="email" value={account?.email || ''} disabled />
           </div>
           <div className="field">
             <label htmlFor="fullname">Full name</label>
@@ -288,6 +326,7 @@ function Profile() {
             <div className="field">
               <label htmlFor="gender">Gender</label>
               <select id="gender" name="gender" value={form.gender} onChange={handleChange}>
+                <option value="">Select</option>
                 <option>Female</option>
                 <option>Male</option>
                 <option>Other</option>

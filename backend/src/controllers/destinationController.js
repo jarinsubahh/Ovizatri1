@@ -8,7 +8,7 @@ const getTopRatedDestinations = async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 6, 20);
     const result = await db.query(
       `SELECT d.destination_id AS "destinationID", d.name, d.division, d.category, d.description,
-              d.avg_rating AS "avgRating",
+              d.avg_rating AS "avgRating", d.image_url AS "image",
               COUNT(DISTINCT p.package_id) AS "packageCount"
        FROM destination d
        LEFT JOIN tour_package p ON p.destination_id = d.destination_id
@@ -38,20 +38,20 @@ const getAllDestinations = async (req, res) => {
     const { category, division } = req.query;
     let query = `
       SELECT destination_id AS "destinationID", name, division, category, description,
-             avg_rating AS "avgRating"
+             avg_rating AS "avgRating", image_url AS "image"
       FROM destination WHERE 1=1
     `;
     const params = [];
     let i = 1;
-    if (category) {
+    if (category && category !== 'All') {
       query += ` AND LOWER(category) = LOWER($${i++})`;
       params.push(category);
     }
-    if (division) {
+    if (division && division !== 'All') {
       query += ` AND LOWER(division) = LOWER($${i++})`;
       params.push(division);
     }
-    query += ' ORDER BY name ASC';
+    query += ' ORDER BY destination_id DESC';
 
     const result = await db.query(query, params);
     return res.status(200).json({
@@ -73,7 +73,7 @@ const getDestinationById = async (req, res) => {
     const { id } = req.params;
     const result = await db.query(
       `SELECT destination_id AS "destinationID", name, division, category, description,
-              avg_rating AS "avgRating"
+              avg_rating AS "avgRating", image_url AS "image"
        FROM destination WHERE destination_id = $1`,
       [id]
     );
@@ -102,4 +102,64 @@ const getDestinationById = async (req, res) => {
   }
 };
 
-module.exports = { getTopRatedDestinations, getAllDestinations, getDestinationById };
+/**
+ * POST /api/destinations (Admin only)
+ */
+const createDestination = async (req, res) => {
+  try {
+    const { name, division, category, description, avg_rating, image_url } = req.body;
+
+    if (!name?.trim() || !division?.trim() || !category?.trim() || !description?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, division, category, and description are required.',
+      });
+    }
+
+    const rating = avg_rating ? Number(avg_rating) : 5.0;
+    if (rating < 0 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 0 and 5.',
+      });
+    }
+
+    const query = `
+      INSERT INTO destination (name, division, category, description, avg_rating, image_url)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING destination_id AS "destinationID", name, division, category, description,
+                avg_rating AS "avgRating", image_url AS "image"
+    `;
+
+    const result = await db.query(query, [
+      name.trim(),
+      division.trim(),
+      category.trim(),
+      description.trim(),
+      rating,
+      image_url?.trim() || null,
+    ]);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Destination created successfully!',
+      destination: result.rows[0],
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'A destination with this name already exists.',
+      });
+    }
+    console.error('Create destination error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to create destination.' });
+  }
+};
+
+module.exports = {
+  getTopRatedDestinations,
+  getAllDestinations,
+  getDestinationById,
+  createDestination,
+};
