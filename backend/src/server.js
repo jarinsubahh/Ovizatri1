@@ -13,6 +13,7 @@ const wishlistRoutes = require('./routes/wishlistRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const destinationRoutes = require('./routes/destinationRoutes');
 const statsRoutes = require('./routes/statsRoutes');
+const bookingRoutes = require('./routes/bookingRoutes');
 const seedAdmin = require('./utils/seedAdmin');
 const db = require('./config/db');
 
@@ -105,6 +106,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/destinations', destinationRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/bookings', bookingRoutes);
 app.use('/api/reviews', reviewRoutes);
 
 // Global 404 Route
