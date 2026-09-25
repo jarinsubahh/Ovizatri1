@@ -145,7 +145,66 @@ CREATE TABLE IF NOT EXISTS booking (
     CONSTRAINT booking_payment_status_check CHECK (payment_status IN ('pending', 'paid', 'refunded', 'failed'))
 );
 
--- 11. REVIEW TABLE
+-- 11. DEMO PAYMENT TABLE (non-destructive extension)
+CREATE TABLE IF NOT EXISTS payments (
+    id SERIAL PRIMARY KEY,
+    booking_id INTEGER REFERENCES booking(booking_id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL CHECK (amount >= 0),
+    payment_method VARCHAR(30) CHECK (payment_method IN ('bKash', 'Nagad', 'Rocket', 'Card', 'CashOnArrival')),
+    transaction_id VARCHAR(100) UNIQUE NOT NULL,
+    status VARCHAR(20) DEFAULT 'COMPLETED' CHECK (status IN ('COMPLETED', 'PENDING', 'FAILED', 'REFUNDED')),
+    payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE FUNCTION calculate_booking_amount(p_package_id INT, p_travelers INT)
+RETURNS NUMERIC
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_price NUMERIC(12,2);
+    v_discount NUMERIC(5,2);
+    v_amount NUMERIC(12,2);
+BEGIN
+    IF p_travelers IS NULL OR p_travelers <= 0 THEN
+        RAISE EXCEPTION 'Travelers count must be greater than zero';
+    END IF;
+
+    SELECT price, COALESCE(discount, 0)
+      INTO v_price, v_discount
+    FROM tour_package
+    WHERE package_id = p_package_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Package not found for booking amount calculation';
+    END IF;
+
+    v_amount := (v_price * p_travelers) * (1 - (v_discount / 100));
+    RETURN ROUND(v_amount, 2);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_booking_confirmed_on_payment()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.status = 'COMPLETED' THEN
+        UPDATE booking
+           SET payment_status = 'paid'
+         WHERE booking_id = NEW.booking_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_payment_completed_confirms_booking
+AFTER INSERT ON payments
+FOR EACH ROW
+WHEN (NEW.status = 'COMPLETED')
+EXECUTE FUNCTION set_booking_confirmed_on_payment();
+
+-- 12. REVIEW TABLE
 CREATE TABLE IF NOT EXISTS review (
     review_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id INTEGER NOT NULL,
@@ -159,7 +218,7 @@ CREATE TABLE IF NOT EXISTS review (
     CONSTRAINT unique_user_package_review UNIQUE (user_id, package_id)
 );
 
--- 12. BLOG TABLE
+-- 13. BLOG TABLE
 CREATE TABLE IF NOT EXISTS blog (
     blog_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id INTEGER NOT NULL,

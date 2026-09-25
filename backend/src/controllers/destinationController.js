@@ -1,9 +1,6 @@
 const db = require('../config/db');
 
-/**
- * GET /api/destinations/top-rated?limit=6
- */
-const getTopRatedDestinations = async (req, res) => {
+const getTopRatedDestinations = async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 6, 20);
     const result = await db.query(
@@ -12,7 +9,7 @@ const getTopRatedDestinations = async (req, res) => {
               COUNT(DISTINCT p.package_id) AS "packageCount"
        FROM destination d
        LEFT JOIN tour_package p ON p.destination_id = d.destination_id
-       WHERE d.avg_rating IS NOT NULL
+       WHERE d.status = 'approved' AND d.avg_rating IS NOT NULL
        GROUP BY d.destination_id
        ORDER BY d.avg_rating DESC, "packageCount" DESC
        LIMIT $1`,
@@ -25,15 +22,11 @@ const getTopRatedDestinations = async (req, res) => {
       destinations: result.rows,
     });
   } catch (error) {
-    console.error('Top-rated destinations error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch top-rated destinations.' });
+    next(error);
   }
 };
-
-/**
- * GET /api/destinations
- */
-const getAllDestinations = async (req, res) => {
+// public can view all destoination approved by admin
+const getAllDestinations = async (req, res, next) => {
   try {
     const { category, division } = req.query;
     let query = `
@@ -60,15 +53,11 @@ const getAllDestinations = async (req, res) => {
       destinations: result.rows,
     });
   } catch (error) {
-    console.error('List destinations error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch destinations.' });
+    next(error);
   }
 };
 
-/**
- * GET /api/destinations/:id
- */
-const getDestinationById = async (req, res) => {
+const getDestinationById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await db.query(
@@ -97,8 +86,105 @@ const getDestinationById = async (req, res) => {
       destination: { ...result.rows[0], packages: packages.rows },
     });
   } catch (error) {
-    console.error('Get destination error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch destination.' });
+    next(error);
+  }
+};
+
+const createDestination = async (req, res, next) => {
+  try {
+    const { name, division, description, category } = req.body;
+    const accountId = req.user?.id || req.user?.account_id;
+    const role = req.user?.role || req.user?.account_type;
+
+    if (!name || !division || !description || !category) {
+      return res.status(400).json({ success: false, message: 'All destination fields are required.' });
+    }
+
+    const existing = await db.query(
+      `SELECT destination_id, status FROM destination WHERE LOWER(name) = LOWER($1)`,
+      [name.trim()]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Destination '${name}' already exists with status: ${existing.rows[0].status}.`,
+      });
+    }
+
+    const initialStatus = role === 'admin' ? 'approved' : 'pending';
+
+    const insertQuery = `
+      INSERT INTO destination (name, division, description, category, status, created_by_account_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `;
+    const result = await db.query(insertQuery, [
+      name.trim(),
+      division,
+      description,
+      category,
+      initialStatus,
+      accountId,
+    ]);
+
+    return res.status(201).json({
+      success: true,
+      message:
+        role === 'admin'
+          ? 'Destination added and published directly.'
+          : 'Destination request submitted for admin review.',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getPendingDestinations = async (req, res, next) => {
+  try {
+    const query = `
+      SELECT d.*, a.email AS submitted_by_email, a.account_type
+      FROM destination d
+      LEFT JOIN account a ON d.created_by_account_id = a.account_id
+      WHERE d.status = 'pending'
+      ORDER BY d.destination_id ASC
+    `;
+    const result = await db.query(query);
+    return res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateDestinationStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: "Status must be either 'approved' or 'rejected'." });
+    }
+
+    const result = await db.query(
+      `UPDATE destination SET status = $1 WHERE destination_id = $2 RETURNING *`,
+      [status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Destination not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Destination has been ${status} successfully.`,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
