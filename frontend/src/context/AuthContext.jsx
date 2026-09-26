@@ -80,7 +80,7 @@ export function AuthProvider({ children }) {
   async function signUpAgency(form) {
     try {
       const data = await request('/auth/signup/agency', { method: 'POST', body: JSON.stringify(form) })
-      // Notice: We DO NOT call persist(...) here!
+      
       // This ensures the agency is NOT logged in and no token is saved.
       return { ok: true, message: data.message }
     } catch (error) {

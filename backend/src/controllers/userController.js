@@ -18,7 +18,9 @@ const updateProfile = async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
       }
-      const hash = await bcrypt.hash(password, 10);
+      // Generate a new, variable salt on every password update
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(password, salt);
       await client.query('UPDATE account SET password_hash = $1 WHERE account_id = $2', [hash, accountId]);
     }
 

@@ -39,7 +39,14 @@ const signupTraveler = async (req, res) => {
       const address = await client.query('INSERT INTO address (street_address) VALUES ($1) RETURNING address_id', [permanentAddress]);
       permanentAddressId = address.rows[0].address_id;
     }
-    const account = await client.query(`INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'user') RETURNING account_id, email, account_type, created_at`, [normalizedEmail, await bcrypt.hash(password, SALT_ROUNDS)]);
+    // Generate a dedicated, random salt unique to this traveler
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    const account = await client.query(
+      `INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'user') RETURNING account_id, email, account_type, created_at`, 
+      [normalizedEmail, passwordHash]
+    );
     const accountRow = account.rows[0];
     const profile = await client.query(`INSERT INTO app_user (account_id, present_address_id, permanent_address_id, username, fullname, gender, dob, phone) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING user_id, present_address_id, permanent_address_id, username, fullname, gender, dob, phone, pfp_url`, [accountRow.account_id, presentAddressId, permanentAddressId, normalizedUsername, fullname.trim(), gender || null, dob || null, phone?.trim() || null]);
     await client.query('COMMIT');
@@ -88,7 +95,14 @@ const signupAgency = async (req, res) => {
       return res.status(409).json({ success: false, message: 'An account with this email already exists.' });
     }
     const address = await client.query(`INSERT INTO address (street_address, thana, district, division, postal_code) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [street_address.trim(), thana?.trim() || null, district.trim(), division.trim(), postalCode?.trim() || null]);
-    const account = await client.query(`INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'agency') RETURNING account_id, email, account_type, created_at`, [normalizedEmail, await bcrypt.hash(password, SALT_ROUNDS)]);
+   // Generate a dedicated, random salt unique to this agency
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    const account = await client.query(
+      `INSERT INTO account (email, password_hash, account_type) VALUES ($1, $2, 'agency') RETURNING account_id, email, account_type, created_at`, 
+      [normalizedEmail, passwordHash]
+    );
     const accountRow = account.rows[0];
     const agency = await client.query(`INSERT INTO agency (account_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, website_url, trade_license_doc_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING agency_id, registered_address_id, agency_name, owner_name, phone, experience_years, overview, status, website_url, trade_license_doc_url`, [accountRow.account_id, address.rows[0].address_id, agencyName.trim(), ownerName.trim(), phone.trim(), experience, overview?.trim() || null, websiteUrl?.trim() || null, tradeLicenseFileName ? (tradeLicenseFileName.startsWith('http') || tradeLicenseFileName.startsWith('/') ? tradeLicenseFileName : `/docs/${tradeLicenseFileName}`) : null]);
     await client.query('COMMIT');

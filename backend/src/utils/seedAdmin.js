@@ -24,7 +24,8 @@ const seedAdmin = async () => {
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    const salt = await bcrypt.genSalt(10);
+const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
     const result = await db.query(
       `INSERT INTO account (email, password_hash, account_type)
