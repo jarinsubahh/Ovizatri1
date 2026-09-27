@@ -436,6 +436,65 @@ CREATE TABLE review (
         UNIQUE (user_id, package_id)
 );
 
+CREATE OR REPLACE FUNCTION fn_sync_destination_rating()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        UPDATE destination d
+        SET avg_rating = (
+            SELECT ROUND(AVG(r.rating)::numeric, 2)
+            FROM review r
+            JOIN tour_package tp ON tp.package_id = r.package_id
+            WHERE tp.destination_id = d.destination_id
+        )
+        WHERE d.destination_id = (
+            SELECT tp.destination_id
+            FROM tour_package tp
+            WHERE tp.package_id = OLD.package_id
+        );
+        RETURN OLD;
+    ELSIF TG_OP = 'UPDATE' THEN
+        UPDATE destination d
+        SET avg_rating = (
+            SELECT ROUND(AVG(r.rating)::numeric, 2)
+            FROM review r
+            JOIN tour_package tp ON tp.package_id = r.package_id
+            WHERE tp.destination_id = d.destination_id
+        )
+        WHERE d.destination_id = (
+            SELECT tp.destination_id
+            FROM tour_package tp
+            WHERE tp.package_id = NEW.package_id
+        );
+        RETURN NEW;
+    ELSE
+        UPDATE destination d
+        SET avg_rating = (
+            SELECT ROUND(AVG(r.rating)::numeric, 2)
+            FROM review r
+            JOIN tour_package tp ON tp.package_id = r.package_id
+            WHERE tp.destination_id = d.destination_id
+        )
+        WHERE d.destination_id = (
+            SELECT tp.destination_id
+            FROM tour_package tp
+            WHERE tp.package_id = NEW.package_id
+        );
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_destination_rating ON review;
+
+CREATE TRIGGER trg_sync_destination_rating
+AFTER INSERT OR UPDATE OF rating, package_id OR DELETE
+ON review
+FOR EACH ROW
+EXECUTE FUNCTION fn_sync_destination_rating();
+
 -- 16. BLOG
 
 CREATE TABLE blog (
@@ -462,11 +521,14 @@ CREATE TABLE blog (
 
 CREATE TABLE agency_audit_log (
     audit_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    admin_id INTEGER NOT NULL,
+    admin_id INTEGER,
     agency_id INTEGER NOT NULL,
     notes TEXT,
+    old_status VARCHAR(30),
+    new_status VARCHAR(30),
+    status_changed_to VARCHAR(30),
     timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status_changed_to VARCHAR(30) NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_audit_admin
         FOREIGN KEY (admin_id)
@@ -481,8 +543,49 @@ CREATE TABLE agency_audit_log (
         ON DELETE CASCADE,
 
     CONSTRAINT audit_status_check
-        CHECK (status_changed_to IN ('pending_review', 'verified', 'rejected', 'suspended'))
+        CHECK (status_changed_to IS NULL OR status_changed_to IN ('pending_review', 'verified', 'rejected', 'suspended'))
 );
+
+CREATE OR REPLACE FUNCTION fn_log_agency_status_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO agency_audit_log (
+            admin_id,
+            agency_id,
+            notes,
+            old_status,
+            new_status,
+            status_changed_to,
+            timestamp,
+            changed_at
+        )
+        VALUES (
+            NULL,
+            NEW.agency_id,
+            'Agency status was updated automatically by database trigger.',
+            OLD.status,
+            NEW.status,
+            NEW.status,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_log_agency_status_change ON agency;
+
+CREATE TRIGGER trg_log_agency_status_change
+AFTER UPDATE OF status
+ON agency
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status)
+EXECUTE FUNCTION fn_log_agency_status_change();
 
 -- 18. USER SAVED DESTINATIONS
 
