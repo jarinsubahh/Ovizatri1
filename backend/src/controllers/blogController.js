@@ -79,6 +79,9 @@ exports.getBlogById = async (req, res, next) => {
 };
 
 exports.createBlog = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { title, content, category, image_url } = req.body;
     const accountId = req.user.account_id || req.user.id;
@@ -88,7 +91,8 @@ exports.createBlog = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Title and content are required' });
     }
 
-    
+    await client.query('BEGIN');
+
     const generatedSlug = title
       .toLowerCase()
       .trim()
@@ -105,7 +109,7 @@ exports.createBlog = async (req, res, next) => {
       RETURNING *
     `;
 
-    const result = await db.query(query, [
+    const result = await client.query(query, [
       accountId,
       title,
       generatedSlug,
@@ -118,6 +122,8 @@ exports.createBlog = async (req, res, next) => {
 
     const createdBlog = (result.rows && result.rows[0]) || result[0];
 
+    await client.query('COMMIT');
+
     res.status(201).json({
       success: true,
       message: initialStatus === 'published'
@@ -126,7 +132,14 @@ exports.createBlog = async (req, res, next) => {
       data: createdBlog,
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for createBlog:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

@@ -36,12 +36,14 @@ exports.getPackageReviews = async (req, res, next) => {
 
 // 2. CREATE A REVIEW (Traveler only)
 exports.createReview = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { package_id, rating, comment } = req.body;
     const accountId = req.user.id || req.user.account_id;
     const accountRole = req.user.role || req.user.account_type;
 
-    // Must be a traveler
     if (accountRole !== 'user' && accountRole !== 'traveler') {
       return res.status(403).json({
         success: false,
@@ -64,14 +66,16 @@ exports.createReview = async (req, res, next) => {
       });
     }
 
-    // Resolve app_user.user_id from account_id
-    const userRes = await db.query(
+    await client.query('BEGIN');
+
+    const userRes = await client.query(
       `SELECT user_id FROM app_user WHERE account_id = $1`,
       [accountId]
     );
     const appUser = userRes.rows[0];
 
     if (!appUser) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         message: 'Traveler profile not found.',
@@ -84,12 +88,14 @@ exports.createReview = async (req, res, next) => {
       RETURNING *
     `;
 
-    const result = await db.query(insertQuery, [
+    const result = await client.query(insertQuery, [
       appUser.user_id,
       package_id,
       numRating,
       comment || null,
     ]);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       success: true,
@@ -97,6 +103,12 @@ exports.createReview = async (req, res, next) => {
       data: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for createReview:', rollbackError.message);
+    }
+
     if (error.code === '23505') {
       return res.status(409).json({
         success: false,
@@ -104,24 +116,31 @@ exports.createReview = async (req, res, next) => {
       });
     }
     next(error);
+  } finally {
+    client.release();
   }
 };
 
 // 3. DELETE REVIEW (With Object-Level Ownership & Admin Override)
 // Evaluated under CSE 216 Section 3.2
 exports.deleteReview = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const accountId = req.user.id || req.user.account_id;
     const accountRole = req.user.role || req.user.account_type;
 
-    // 1. Fetch the review
-    const findResult = await db.query(
+    await client.query('BEGIN');
+
+    const findResult = await client.query(
       `SELECT review_id, user_id FROM review WHERE review_id = $1`,
       [id]
     );
 
     if (findResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         message: 'Review not found.',
@@ -130,38 +149,45 @@ exports.deleteReview = async (req, res, next) => {
 
     const review = findResult.rows[0];
 
-    // 2. If the user is an admin, they can delete any inappropriate review
     if (accountRole === 'admin') {
-      await db.query(`DELETE FROM review WHERE review_id = $1`, [id]);
+      await client.query(`DELETE FROM review WHERE review_id = $1`, [id]);
+      await client.query('COMMIT');
       return res.status(200).json({
         success: true,
         message: 'Review deleted successfully by administrator.',
       });
     }
 
-    // 3. If not admin, check object-level ownership (must belong to this traveler)
-    const userRes = await db.query(
+    const userRes = await client.query(
       `SELECT user_id FROM app_user WHERE account_id = $1`,
       [accountId]
     );
     const appUser = userRes.rows[0];
 
     if (!appUser || review.user_id !== appUser.user_id) {
+      await client.query('ROLLBACK');
       return res.status(403).json({
         success: false,
         message: 'Forbidden: You can only delete your own reviews.',
       });
     }
 
-    // 4. Owner verified, proceed with deletion
-    await db.query(`DELETE FROM review WHERE review_id = $1`, [id]);
+    await client.query(`DELETE FROM review WHERE review_id = $1`, [id]);
+    await client.query('COMMIT');
 
     res.status(200).json({
       success: true,
       message: 'Your review was deleted successfully.',
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for deleteReview:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

@@ -112,31 +112,47 @@ const getAllAgencies = async (req, res) => {
  * PATCH /api/admin/users/:id/status
  */
 const toggleUserStatus = async (req, res) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const { isActive } = req.body;
 
-    const account = await db.query('SELECT account_id, account_type FROM account WHERE account_id = $1', [id]);
+    await client.query('BEGIN');
+
+    const account = await client.query('SELECT account_id, account_type FROM account WHERE account_id = $1', [id]);
     if (account.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Account not found.' });
     }
 
     if (account.rows[0].account_type === 'agency') {
       const status = isActive === false ? 'suspended' : 'verified';
-      const result = await db.query(
+      const result = await client.query(
         `UPDATE agency SET status = $1 WHERE account_id = $2 RETURNING agency_id, agency_name, status`,
         [status, id]
       );
+      await client.query('COMMIT');
       return res.status(200).json({ success: true, message: `Agency ${status}.`, agency: result.rows[0] });
     }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
       message: 'This account type has no activation flag in the current schema; no changes were made.',
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for toggleUserStatus:', rollbackError.message);
+    }
     console.error('Toggle user status error:', error);
     return res.status(500).json({ success: false, message: 'Failed to update user status.' });
+  } finally {
+    client.release();
   }
 };
 
@@ -145,6 +161,9 @@ const toggleUserStatus = async (req, res) => {
  * Accepts either agency_id or account_id
  */
 const verifyAgency = async (req, res) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { agencyUserId } = req.params;
     const { isVerified, status: explicitStatus, notes } = req.body;
@@ -158,7 +177,9 @@ const verifyAgency = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status provided.' });
     }
 
-    const result = await db.query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE agency 
        SET status = $1 
        WHERE agency_id = $2 OR account_id = $2
@@ -167,20 +188,22 @@ const verifyAgency = async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Agency profile not found.' });
     }
 
     const updatedAgency = result.rows[0];
 
-    // Log the change into agency_audit_log
-    const admin = await db.query('SELECT admin_id FROM admin WHERE account_id = $1', [req.user.id]);
+    const admin = await client.query('SELECT admin_id FROM admin WHERE account_id = $1', [req.user.id]);
     if (admin.rows.length > 0) {
-      await db.query(
+      await client.query(
         `INSERT INTO agency_audit_log (admin_id, agency_id, notes, status_changed_to)
          VALUES ($1, $2, $3, $4)`,
         [admin.rows[0].admin_id, updatedAgency.agency_id, notes || `Status changed to ${targetStatus} by admin.`, targetStatus]
       );
     }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
@@ -188,11 +211,18 @@ const verifyAgency = async (req, res) => {
       agency: updatedAgency,
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for verifyAgency:', rollbackError.message);
+    }
     console.error('Verify agency error:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to update agency status.',
     });
+  } finally {
+    client.release();
   }
 };
 
@@ -235,6 +265,9 @@ const getAllBlogsForAdmin = async (req, res, next) => {
  * PATCH /api/admin/blogs/:id/status
  */
 const updateBlogStatus = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -242,6 +275,8 @@ const updateBlogStatus = async (req, res, next) => {
     if (!['published', 'rejected', 'pending', 'draft'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status provided' });
     }
+
+    await client.query('BEGIN');
 
     const publishDate = status === 'published' ? new Date() : null;
 
@@ -252,12 +287,15 @@ const updateBlogStatus = async (req, res, next) => {
       RETURNING *
     `;
 
-    const result = await db.query(query, [status, publishDate, id]);
+    const result = await client.query(query, [status, publishDate, id]);
     const updatedBlog = (result.rows && result.rows[0]) || result[0];
 
     if (!updatedBlog) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
+
+    await client.query('COMMIT');
 
     res.status(200).json({
       success: true,
@@ -265,7 +303,14 @@ const updateBlogStatus = async (req, res, next) => {
       data: updatedBlog,
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for updateBlogStatus:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

@@ -149,6 +149,9 @@ const getPackageById = async (req, res, next) => {
 };
 
 const createPackage = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const accountId = req.user?.id || req.user?.account_id;
     const role = req.user?.role || req.user?.account_type;
@@ -177,41 +180,48 @@ const createPackage = async (req, res, next) => {
       });
     }
 
+    await client.query('BEGIN');
+
     let targetAgencyId;
 
     if (role === 'admin') {
       targetAgencyId = agencyID;
       if (!targetAgencyId) {
-        const agencyProfile = await getAgencyIdForAccount(accountId);
-        targetAgencyId = agencyProfile?.agency_id;
+        const agencyProfile = await client.query('SELECT agency_id, status FROM agency WHERE account_id = $1', [accountId]);
+        targetAgencyId = agencyProfile.rows[0]?.agency_id;
       }
       if (!targetAgencyId) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ success: false, message: 'An agency ID must be provided.' });
       }
     } else {
-      const agencyProfile = await getAgencyIdForAccount(accountId);
-      if (!agencyProfile) {
+      const agencyProfile = await client.query('SELECT agency_id, status FROM agency WHERE account_id = $1', [accountId]);
+      if (!agencyProfile.rows[0]) {
+        await client.query('ROLLBACK');
         return res.status(404).json({ success: false, message: 'Agency profile not found.' });
       }
-      if (agencyProfile.status !== 'verified') {
+      if (agencyProfile.rows[0].status !== 'verified') {
+        await client.query('ROLLBACK');
         return res.status(403).json({
           success: false,
           message: 'Only verified agencies can create tour packages.',
         });
       }
-      targetAgencyId = agencyProfile.agency_id;
+      targetAgencyId = agencyProfile.rows[0].agency_id;
     }
 
-    const destRes = await db.query(
+    const destRes = await client.query(
       `SELECT destination_id, status FROM destination WHERE destination_id = $1`,
       [destId]
     );
 
     if (destRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Destination not found.' });
     }
 
     if (destRes.rows[0].status !== 'approved') {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         message: 'Cannot create a package for an unapproved destination.',
@@ -227,7 +237,7 @@ const createPackage = async (req, res, next) => {
                 title, price, duration, max_seat AS "maxSeat", discount, description, status
     `;
 
-    const result = await db.query(insertQuery, [
+    const result = await client.query(insertQuery, [
       targetAgencyId,
       destId,
       title.trim(),
@@ -243,11 +253,13 @@ const createPackage = async (req, res, next) => {
 
     if (Array.isArray(amenityIDs) && amenityIDs.length > 0) {
       const values = amenityIDs.map((_, idx) => `($1, $${idx + 2})`).join(', ');
-      await db.query(`INSERT INTO package_amenity (package_id, amenity_id) VALUES ${values}`, [
+      await client.query(`INSERT INTO package_amenity (package_id, amenity_id) VALUES ${values}`, [
         created.packageID,
         ...amenityIDs,
       ]);
     }
+
+    await client.query('COMMIT');
 
     return res.status(201).json({
       success: true,
@@ -258,10 +270,18 @@ const createPackage = async (req, res, next) => {
       package: created,
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for package create:', rollbackError.message);
+    }
+
     if (error.code === '23503') {
       return res.status(400).json({ success: false, message: 'Invalid destination or amenity reference.' });
     }
     next(error);
+  } finally {
+    client.release();
   }
 };
 
@@ -291,6 +311,9 @@ const getPendingPackages = async (req, res, next) => {
 };
 
 const updatePackageStatus = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -302,14 +325,19 @@ const updatePackageStatus = async (req, res, next) => {
       });
     }
 
-    const result = await db.query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE tour_package SET status = $1 WHERE package_id = $2 RETURNING *`,
       [status, id]
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Tour package not found.' });
     }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
@@ -317,16 +345,29 @@ const updatePackageStatus = async (req, res, next) => {
       data: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for package status update:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 
 const updatePackage = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
-    const existingResult = await db.query('SELECT * FROM tour_package WHERE package_id = $1', [id]);
+    await client.query('BEGIN');
+
+    const existingResult = await client.query('SELECT * FROM tour_package WHERE package_id = $1', [id]);
 
     if (existingResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         message: 'Package not found.',
@@ -392,6 +433,7 @@ const updatePackage = async (req, res, next) => {
     }
 
     if (updateFields.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         message: 'No valid fields provided for update.',
@@ -400,14 +442,23 @@ const updatePackage = async (req, res, next) => {
 
     values.push(id);
     const query = `UPDATE tour_package SET ${updateFields.join(', ')} WHERE package_id = $${values.length} RETURNING *`;
-    const result = await db.query(query, values);
+    const result = await client.query(query, values);
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
       package: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for package update:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 
@@ -432,13 +483,21 @@ const getAgencyPackages = async (req, res, next) => {
 };
 
 const deletePackage = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
-    const result = await db.query('DELETE FROM tour_package WHERE package_id = $1 RETURNING *', [id]);
+    await client.query('BEGIN');
+
+    const result = await client.query('DELETE FROM tour_package WHERE package_id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Package not found.' });
     }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
@@ -446,7 +505,14 @@ const deletePackage = async (req, res, next) => {
       package: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for package delete:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

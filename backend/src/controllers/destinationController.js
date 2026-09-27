@@ -91,6 +91,9 @@ const getDestinationById = async (req, res, next) => {
 };
 
 const createDestination = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { name, division, category, description, avg_rating, image_url } = req.body;
     const accountId = req.user?.id || req.user?.account_id;
@@ -111,11 +114,14 @@ const createDestination = async (req, res, next) => {
       });
     }
 
-    const existing = await db.query(
+    await client.query('BEGIN');
+
+    const existing = await client.query(
       `SELECT destination_id, status FROM destination WHERE LOWER(name) = LOWER($1)`,
       [name.trim()]
     );
     if (existing.rows.length > 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({
         success: false,
         message: `Destination '${name}' already exists with status: ${existing.rows[0].status}.`,
@@ -131,7 +137,7 @@ const createDestination = async (req, res, next) => {
                 avg_rating AS "avgRating", image_url AS "image", status, created_by_account_id
     `;
 
-    const result = await db.query(query, [
+    const result = await client.query(query, [
       name.trim(),
       division.trim(),
       category.trim(),
@@ -142,6 +148,8 @@ const createDestination = async (req, res, next) => {
       accountId,
     ]);
 
+    await client.query('COMMIT');
+
     return res.status(201).json({
       success: true,
       message:
@@ -151,6 +159,12 @@ const createDestination = async (req, res, next) => {
       destination: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for createDestination:', rollbackError.message);
+    }
+
     if (error.code === '23505') {
       return res.status(409).json({
         success: false,
@@ -159,6 +173,8 @@ const createDestination = async (req, res, next) => {
     }
     console.error('Create destination error:', error);
     return next(error);
+  } finally {
+    client.release();
   }
 };
 
@@ -183,6 +199,9 @@ const getPendingDestinations = async (req, res, next) => {
 };
 
 const updateDestinationStatus = async (req, res, next) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -191,14 +210,19 @@ const updateDestinationStatus = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Status must be either 'approved' or 'rejected'." });
     }
 
-    const result = await db.query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE destination SET status = $1 WHERE destination_id = $2 RETURNING *`,
       [status, id]
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Destination not found.' });
     }
+
+    await client.query('COMMIT');
 
     return res.status(200).json({
       success: true,
@@ -206,7 +230,14 @@ const updateDestinationStatus = async (req, res, next) => {
       data: result.rows[0],
     });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for destination status update:', rollbackError.message);
+    }
     next(error);
+  } finally {
+    client.release();
   }
 };
 

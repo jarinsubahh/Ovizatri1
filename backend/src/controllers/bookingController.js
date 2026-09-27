@@ -3,7 +3,7 @@ const db = require('../config/db');
 const VALID_PAYMENT_METHODS = ['bKash', 'Nagad', 'Rocket', 'Card', 'CashOnArrival'];
 
 function generateMockTransactionId() {
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const suffix =     Math.random().toString(36).slice(2, 8).toUpperCase();
   return `TRX-${Date.now()}-${suffix}`;
 }
 
