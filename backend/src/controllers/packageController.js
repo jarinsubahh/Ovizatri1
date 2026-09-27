@@ -490,6 +490,9 @@ const deletePackage = async (req, res, next) => {
     const { id } = req.params;
     await client.query('BEGIN');
 
+    await client.query('DELETE FROM package_amenity WHERE package_id = $1', [id]);
+    await client.query('DELETE FROM tour_schedule WHERE package_id = $1', [id]);
+
     const result = await client.query('DELETE FROM tour_package WHERE package_id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {

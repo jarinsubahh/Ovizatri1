@@ -22,13 +22,7 @@ async function createBooking(client, reqUser, payload) {
   const resolvedUserId = Number(reqUser?.user_id ?? reqUser?.id ?? 1) || 1;
 
   const packageResult = await client.query(
-    `SELECT tp.package_id, tp.max_seat,
-            COALESCE(SUM(b.group_size), 0) AS booked_seats
-     FROM tour_package tp
-     LEFT JOIN booking b ON b.package_id = tp.package_id
-     WHERE tp.package_id = $1
-     GROUP BY tp.package_id, tp.max_seat
-     FOR UPDATE`,
+    'SELECT package_id, max_seat FROM tour_package WHERE package_id = $1 FOR UPDATE;',
     [packageId]
   );
 
@@ -36,8 +30,14 @@ async function createBooking(client, reqUser, payload) {
     throw Object.assign(new Error('Package not found.'), { statusCode: 404 });
   }
 
-  const { max_seat: maxSeat, booked_seats: bookedSeats = 0 } = packageResult.rows[0];
-  const remainingSeats = Number(maxSeat) - Number(bookedSeats || 0);
+  const bookedSeatsResult = await client.query(
+    "SELECT COALESCE(SUM(group_size), 0) AS booked_seats FROM booking WHERE package_id = $1 AND payment_status != 'cancelled';",
+    [packageId]
+  );
+
+  const { max_seat: maxSeat } = packageResult.rows[0];
+  const bookedSeats = Number(bookedSeatsResult.rows[0]?.booked_seats || 0);
+  const remainingSeats = Number(maxSeat) - bookedSeats;
 
   if (remainingSeats < travelers) {
     throw Object.assign(
@@ -66,13 +66,6 @@ async function createBooking(client, reqUser, payload) {
      VALUES ($1, $2, $3, $4, $5, 'pending')
      RETURNING booking_id, user_id, package_id, schedule_id, group_size, total_amount, payment_status`,
     [resolvedUserId, packageId, scheduleId, travelers, computedAmount]
-  );
-
-  await client.query(
-    `UPDATE tour_package
-     SET max_seat = max_seat
-     WHERE package_id = $1`,
-    [packageId]
   );
 
   const booking = bookingInsert.rows[0];

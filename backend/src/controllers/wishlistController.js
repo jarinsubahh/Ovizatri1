@@ -65,6 +65,9 @@ const getWishlist = async (req, res) => {
  * Body: { type: 'destination' | 'package', id: number }
  */
 const toggleWishlist = async (req, res) => {
+  const pool = db.pool || db;
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== 'user') {
       return res.status(403).json({ success: false, message: 'Only traveler accounts can save items.' });
@@ -86,21 +89,33 @@ const toggleWishlist = async (req, res) => {
     const table = type === 'destination' ? 'user_saved_destination' : 'user_saved_package';
     const column = type === 'destination' ? 'destination_id' : 'package_id';
 
-    const existing = await db.query(`SELECT 1 FROM ${table} WHERE user_id = $1 AND ${column} = $2`, [userId, id]);
+    await client.query('BEGIN');
+
+    const existing = await client.query(`SELECT 1 FROM ${table} WHERE user_id = $1 AND ${column} = $2`, [userId, id]);
 
     if (existing.rows.length > 0) {
-      await db.query(`DELETE FROM ${table} WHERE user_id = $1 AND ${column} = $2`, [userId, id]);
+      await client.query(`DELETE FROM ${table} WHERE user_id = $1 AND ${column} = $2`, [userId, id]);
+      await client.query('COMMIT');
       return res.status(200).json({ success: true, saved: false, message: 'Removed from wishlist.' });
     }
 
-    await db.query(`INSERT INTO ${table} (user_id, ${column}) VALUES ($1, $2)`, [userId, id]);
+    await client.query(`INSERT INTO ${table} (user_id, ${column}) VALUES ($1, $2)`, [userId, id]);
+    await client.query('COMMIT');
     return res.status(200).json({ success: true, saved: true, message: 'Added to wishlist.' });
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('Rollback failed for toggleWishlist:', rollbackError.message);
+    }
+
     if (error.code === '23503') {
       return res.status(404).json({ success: false, message: 'The item you tried to save does not exist.' });
     }
     console.error('Toggle wishlist error:', error);
     return res.status(500).json({ success: false, message: 'Failed to update wishlist.' });
+  } finally {
+    client.release();
   }
 };
 
