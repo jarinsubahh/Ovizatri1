@@ -279,7 +279,8 @@ function MyBlogs() {
 }
 
 function Profile() {
-  const { account } = useAuth()
+  const { account, logout } = useAuth()
+  const navigate = useNavigate()
   const [form, setForm] = useState({ 
     fullname: account?.fullname || '', 
     phone: account?.phone || '', 
@@ -287,6 +288,8 @@ function Profile() {
     dob: account?.dob || '' 
   })
   const [saved, setSaved] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
   function handleChange(e) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
@@ -296,6 +299,37 @@ function Profile() {
     e.preventDefault()
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm('This will permanently delete your account and all related profile data. This action cannot be undone. Continue?')) {
+      return
+    }
+
+    try {
+      const token = account?.token
+      if (!token) {
+        throw new Error('You must be signed in to delete your account.')
+      }
+
+      const response = await fetch(`${API_URL}/users/delete-account`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete account.')
+      }
+
+      logout()
+      navigate('/')
+    } catch (error) {
+      setDeleteError(error.message || 'Could not delete account.')
+    }
   }
 
   return (
@@ -341,6 +375,15 @@ function Profile() {
             Save Changes
           </button>
         </form>
+      </div>
+
+      <div className="card card-pad" style={{ maxWidth: 520, marginTop: 24, borderColor: '#d32f2f' }}>
+        <h3 style={{ marginTop: 0, color: '#d32f2f' }}>Danger Zone</h3>
+        <p style={{ marginBottom: 16 }}>Permanently delete your traveler account and associated profile data.</p>
+        {deleteError && <div className="form-error-banner">{deleteError}</div>}
+        <button type="button" className="btn btn-danger" onClick={handleDeleteAccount}>
+          Delete Account
+        </button>
       </div>
     </div>
   )

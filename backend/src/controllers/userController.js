@@ -67,6 +67,67 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const deleteAccount = async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const accountId = req.user?.id;
+
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required to delete this account.',
+      });
+    }
+
+    const accountExists = await client.query('SELECT account_id FROM account WHERE account_id = $1', [accountId]);
+    if (!accountExists.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found.',
+      });
+    }
+
+    const userRow = await client.query('SELECT user_id FROM app_user WHERE account_id = $1 LIMIT 1', [accountId]);
+    const userId = userRow.rows[0]?.user_id;
+
+    await client.query('BEGIN');
+
+    if (userId) {
+      await client.query('DELETE FROM review WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM booking WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM user_saved_destination WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM user_saved_package WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM itinerary WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM app_user WHERE account_id = $1', [accountId]);
+    }
+
+    const deletedAccount = await client.query('DELETE FROM account WHERE account_id = $1 RETURNING account_id', [accountId]);
+
+    if (!deletedAccount.rowCount) {
+      throw Object.assign(new Error('Account could not be deleted.'), { statusCode: 500 });
+    }
+
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Account deleted successfully.',
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Delete account error:', error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to delete account.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   updateProfile,
+  deleteAccount,
 };
