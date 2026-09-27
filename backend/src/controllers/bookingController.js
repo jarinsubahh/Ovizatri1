@@ -110,25 +110,50 @@ const postDemoPayment = async (req, res, next) => {
     const payload = req.body || {};
     const paymentMethod = normalizePaymentMethod(payload.payment_method);
     const transactionId = String(payload.transaction_id || '').trim() || generateMockTransactionId();
-    const amount = Number(payload.amount);
+    const amount = Number(payload.amount ?? 0);
+    const packageId = Number(payload.package_id);
+    const scheduleId = Number(payload.schedule_id ?? 1);
+    const groupSize = Number(payload.group_size ?? payload.traveler_count ?? 1) || 1;
+    const currentUserId = Number(req.user?.user_id ?? req.user?.id ?? 1) || 1;
 
     await client.query('BEGIN');
 
-    const booking = await resolveBookingForPayment(client, req.user, payload);
-    const finalAmount = Number.isFinite(amount) && amount > 0 ? amount : Number(booking.total_amount || 0);
-
-    const paymentResult = await client.query(
-      `INSERT INTO payments (booking_id, amount, payment_method, transaction_id, status, payment_date)
-       VALUES ($1, $2, $3, $4, 'COMPLETED', CURRENT_TIMESTAMP)
-       RETURNING id, booking_id, amount, payment_method, transaction_id, status, payment_date`,
-      [booking.booking_id, finalAmount, paymentMethod, transactionId]
+    const procedureCall = await client.query(
+      `CALL sp_process_booking_payment(
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10
+      )`,
+      [
+        currentUserId,
+        packageId,
+        scheduleId,
+        groupSize,
+        paymentMethod,
+        transactionId,
+        amount,
+        null,
+        null,
+        null,
+      ]
     );
+
+    const procedureOutput = procedureCall.rows?.[0] || {};
+    const bookingId = procedureOutput.p_booking_id ?? procedureOutput.booking_id ?? null;
+    const paymentId = procedureOutput.p_payment_id ?? procedureOutput.payment_id ?? null;
+    const procedureStatus = procedureOutput.p_status ?? procedureOutput.status ?? 'COMPLETED';
 
     const bookingResult = await client.query(
       `SELECT booking_id, user_id, package_id, schedule_id, group_size, total_amount, payment_status
        FROM booking
        WHERE booking_id = $1`,
-      [booking.booking_id]
+      [bookingId]
+    );
+
+    const paymentResult = await client.query(
+      `SELECT id, booking_id, amount, payment_method, transaction_id, status, payment_date
+       FROM payments
+       WHERE id = $1`,
+      [paymentId]
     );
 
     await client.query('COMMIT');
@@ -139,11 +164,11 @@ const postDemoPayment = async (req, res, next) => {
       booking: bookingResult.rows[0],
       payment: paymentResult.rows[0],
       receipt: {
-        bookingId: booking.booking_id,
-        amount: Number(paymentResult.rows[0].amount),
-        method: paymentResult.rows[0].payment_method,
-        transactionId: paymentResult.rows[0].transaction_id,
-        status: paymentResult.rows[0].status,
+        bookingId,
+        amount: Number(paymentResult.rows[0]?.amount ?? 0),
+        method: paymentResult.rows[0]?.payment_method,
+        transactionId: paymentResult.rows[0]?.transaction_id,
+        status: procedureStatus,
       },
     });
   } catch (error) {

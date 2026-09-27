@@ -517,6 +517,124 @@ FOR EACH ROW
 WHEN (NEW.status = 'COMPLETED')
 EXECUTE FUNCTION set_booking_confirmed_on_payment();
 
+CREATE OR REPLACE PROCEDURE sp_process_booking_payment(
+    IN p_user_id INT,
+    IN p_package_id INT,
+    IN p_schedule_id INT,
+    IN p_group_size INT,
+    IN p_payment_method VARCHAR(50),
+    IN p_transaction_id VARCHAR(100),
+    IN p_amount NUMERIC(12,2),
+    OUT p_booking_id INT,
+    OUT p_payment_id INT,
+    OUT p_status VARCHAR(50)
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_max_seat INT;
+    v_booked_seats BIGINT;
+    v_total_amount NUMERIC(12,2);
+BEGIN
+    p_booking_id := NULL;
+    p_payment_id := NULL;
+    p_status := 'FAILED';
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'User ID is required';
+    END IF;
+
+    IF p_package_id IS NULL THEN
+        RAISE EXCEPTION 'Package ID is required';
+    END IF;
+
+    IF p_schedule_id IS NULL THEN
+        RAISE EXCEPTION 'Schedule ID is required';
+    END IF;
+
+    IF p_group_size IS NULL OR p_group_size <= 0 THEN
+        RAISE EXCEPTION 'Group size must be greater than zero';
+    END IF;
+
+    IF p_payment_method IS NULL OR TRIM(p_payment_method) = '' THEN
+        RAISE EXCEPTION 'Payment method is required';
+    END IF;
+
+    IF p_transaction_id IS NULL OR TRIM(p_transaction_id) = '' THEN
+        RAISE EXCEPTION 'Transaction ID is required';
+    END IF;
+
+    SELECT max_seat
+      INTO v_max_seat
+    FROM tour_package
+    WHERE package_id = p_package_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Package not found: %', p_package_id;
+    END IF;
+
+    SELECT COALESCE(SUM(group_size), 0)
+      INTO v_booked_seats
+    FROM booking
+    WHERE package_id = p_package_id
+      AND payment_status IS DISTINCT FROM 'cancelled';
+
+    IF (v_booked_seats + p_group_size) > v_max_seat THEN
+        RAISE EXCEPTION 'Not enough available seats for this package. Capacity exceeded.';
+    END IF;
+
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        SELECT calculate_booking_amount(p_package_id, p_group_size)
+          INTO v_total_amount;
+    ELSE
+        v_total_amount := p_amount;
+    END IF;
+
+    INSERT INTO booking (
+        user_id,
+        package_id,
+        schedule_id,
+        group_size,
+        total_amount,
+        payment_status
+    )
+    VALUES (
+        p_user_id,
+        p_package_id,
+        p_schedule_id,
+        p_group_size,
+        v_total_amount,
+        'pending'
+    )
+    RETURNING booking_id INTO p_booking_id;
+
+    INSERT INTO payments (
+        booking_id,
+        amount,
+        payment_method,
+        transaction_id,
+        status,
+        payment_date
+    )
+    VALUES (
+        p_booking_id,
+        v_total_amount,
+        p_payment_method,
+        p_transaction_id,
+        'COMPLETED',
+        CURRENT_TIMESTAMP
+    )
+    RETURNING id INTO p_payment_id;
+
+    UPDATE booking
+       SET payment_status = 'paid'
+     WHERE booking_id = p_booking_id;
+
+    p_status := 'COMPLETED';
+END;
+$$;
+
 -- 15. REVIEW
 
 CREATE TABLE review (
@@ -778,3 +896,133 @@ CREATE INDEX idx_audit_agency_id
     ON agency_audit_log(agency_id);
 
 COMMIT;
+-- ========================================================
+-- STORED PROCEDURE: Multi-step Booking and Payment Workflow
+-- ========================================================
+CREATE OR REPLACE PROCEDURE sp_process_booking_payment(
+    IN p_user_id INT,
+    IN p_package_id INT,
+    IN p_schedule_id INT,
+    IN p_group_size INT,
+    IN p_payment_method VARCHAR(50),
+    IN p_transaction_id VARCHAR(100),
+    IN p_amount NUMERIC(12,2),
+    OUT p_booking_id INT,
+    OUT p_payment_id INT,
+    OUT p_status VARCHAR(50)
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_max_seat INT;
+    v_booked_seats BIGINT;
+    v_total_amount NUMERIC(12,2);
+    v_valid_method BOOLEAN;
+BEGIN
+    p_booking_id := NULL;
+    p_payment_id := NULL;
+    p_status := 'FAILED';
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'User ID is required';
+    END IF;
+
+    IF p_package_id IS NULL THEN
+        RAISE EXCEPTION 'Package ID is required';
+    END IF;
+
+    IF p_schedule_id IS NULL THEN
+        RAISE EXCEPTION 'Schedule ID is required';
+    END IF;
+
+    IF p_group_size IS NULL OR p_group_size <= 0 THEN
+        RAISE EXCEPTION 'Group size must be greater than zero';
+    END IF;
+
+    IF p_payment_method IS NULL OR trim(p_payment_method) = '' THEN
+        RAISE EXCEPTION 'Payment method is required';
+    END IF;
+
+    v_valid_method := p_payment_method IN ('bKash', 'Nagad', 'Rocket', 'Card', 'CashOnArrival');
+    IF NOT v_valid_method THEN
+        RAISE EXCEPTION 'Unsupported payment method: %', p_payment_method;
+    END IF;
+
+    IF p_transaction_id IS NULL OR trim(p_transaction_id) = '' THEN
+        RAISE EXCEPTION 'Transaction ID is required';
+    END IF;
+
+    -- Concurrency Row-level Lock
+    SELECT max_seat
+      INTO v_max_seat
+    FROM tour_package
+    WHERE package_id = p_package_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Package not found: %', p_package_id;
+    END IF;
+
+    SELECT COALESCE(SUM(group_size), 0)
+      INTO v_booked_seats
+    FROM booking
+    WHERE package_id = p_package_id
+      AND payment_status IS DISTINCT FROM 'cancelled';
+
+    IF (v_booked_seats + p_group_size) > v_max_seat THEN
+        RAISE EXCEPTION 'Not enough available seats for this package. Capacity exceeded.';
+    END IF;
+
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        SELECT calculate_booking_amount(p_package_id, p_group_size)
+          INTO v_total_amount;
+    ELSE
+        v_total_amount := p_amount;
+    END IF;
+
+    -- Step A: Insert Booking
+    INSERT INTO booking (
+        user_id,
+        package_id,
+        schedule_id,
+        group_size,
+        total_amount,
+        payment_status
+    )
+    VALUES (
+        p_user_id,
+        p_package_id,
+        p_schedule_id,
+        p_group_size,
+        v_total_amount,
+        'pending'
+    )
+    RETURNING booking_id INTO p_booking_id;
+
+    -- Step B: Insert Payment Record
+    INSERT INTO payments (
+        booking_id,
+        amount,
+        payment_method,
+        transaction_id,
+        status,
+        payment_date
+    )
+    VALUES (
+        p_booking_id,
+        v_total_amount,
+        p_payment_method,
+        p_transaction_id,
+        'COMPLETED',
+        CURRENT_TIMESTAMP
+    )
+    RETURNING id INTO p_payment_id;
+
+    -- Step C: Update Booking to paid
+    UPDATE booking
+       SET payment_status = 'paid'
+     WHERE booking_id = p_booking_id;
+
+    p_status := 'COMPLETED';
+END;
+$$;
