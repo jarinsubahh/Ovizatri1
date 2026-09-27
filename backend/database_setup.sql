@@ -294,4 +294,17 @@ INSERT INTO booking (user_id, package_id, schedule_id, group_size, total_amount,
 VALUES 
     (1, 1, 1, 2, 17000.00, 'paid');
 
+-- Table to store likes and dislikes on reviews
+CREATE TABLE IF NOT EXISTS review_reaction (
+    reaction_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    review_id INTEGER NOT NULL REFERENCES review(review_id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES account(account_id) ON DELETE CASCADE,
+    reaction_type VARCHAR(10) NOT NULL CHECK (reaction_type IN ('like', 'dislike')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_user_review_reaction UNIQUE (review_id, account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reaction_review_id ON review_reaction(review_id);
+
+
 COMMIT;

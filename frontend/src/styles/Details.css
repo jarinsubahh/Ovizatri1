@@ -134,6 +134,101 @@
   margin-top: 16px;
 }
 
+/* Compact Review Composer */
+.review-composer {
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  padding: 16px 18px;
+  margin-bottom: 24px;
+  max-width: 580px;
+  box-shadow: 0 1px 3px rgba(20, 26, 20, 0.04);
+}
+
+.review-composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.review-composer-header h4 {
+  font-size: 0.98rem;
+  margin: 0;
+  color: var(--forest-dark);
+  font-weight: 600;
+}
+
+.review-rating-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-composer-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--sand);
+  color: var(--ink);
+  resize: vertical;
+  min-height: 58px;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.review-composer-input:focus {
+  outline: none;
+  background: var(--paper);
+  border-color: var(--forest);
+  box-shadow: 0 0 0 2px rgba(11, 61, 46, 0.08);
+}
+
+.review-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+/* Review Reactions (Like / Dislike) */
+.review-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.btn-reaction {
+  background: var(--sand);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-reaction:hover {
+  background: var(--paper);
+  border-color: var(--forest);
+  color: var(--forest);
+}
+
+.btn-reaction.active {
+  background: rgba(11, 61, 46, 0.12);
+  border-color: var(--forest);
+  color: var(--forest-dark);
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .detail-layout {
     grid-template-columns: 1fr;
