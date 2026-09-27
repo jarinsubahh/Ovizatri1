@@ -241,6 +241,49 @@ export default function DestinationDetails() {
               <Link to="/packages" className="btn btn-outline btn-block" style={{ marginTop: 10 }}>
                 Browse All Packages
               </Link>
+
+              {/* --- MINI MAP PREVIEW WIDGET --- */}
+              <div className="destination-map-card">
+                <div className="destination-map-header">
+                  <span>Location Map</span>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      `${destination.name},${destination.division}, Bangladesh`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="map-ext-link"
+                  >
+                    Open in Maps ↗
+                  </a>
+                </div>
+
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    `${destination.name},${destination.division}, Bangladesh`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="map-frame-wrapper"
+                  title="Click to view full location on Google Maps"
+                >
+                  <iframe
+                    title={`${destination.name} Map`}
+                    width="100%"
+                    height="170"
+                    frameBorder="0"
+                    scrolling="no"
+                    marginHeight="0"
+                    marginWidth="0"
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(
+                      `${destination.name},${destination.division}, Bangladesh`
+                    )}&t=&z=10&ie=UTF8&iwloc=&output=embed`}
+                  />
+                  <div className="map-overlay-badge">
+                    <span>📍 View on Google Maps</span>
+                  </div>
+                </a>
+              </div>
             </div>
           </aside>
         </div>

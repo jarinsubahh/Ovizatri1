@@ -237,3 +237,80 @@
     position: static;
   }
 }
+
+
+/* Destination Sidebar Mini Map */
+.destination-map-card {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.destination-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--forest-dark);
+}
+
+.map-ext-link {
+  font-size: 0.78rem;
+  color: var(--river);
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.map-ext-link:hover {
+  color: var(--gold-dark);
+  text-decoration: underline;
+}
+
+.map-frame-wrapper {
+  display: block;
+  position: relative;
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: var(--sand);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.map-frame-wrapper iframe {
+  display: block;
+  border: none;
+  pointer-events: none; /* Allows the wrapping link to capture clicks smoothly */
+  filter: saturate(0.85) contrast(1.05); /* Tones down harsh satellite colors to fit the vintage theme */
+  transition: filter 0.2s ease;
+}
+
+.map-frame-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(11, 61, 46, 0.12);
+}
+
+.map-frame-wrapper:hover iframe {
+  filter: saturate(1) contrast(1);
+}
+
+.map-overlay-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(8, 42, 32, 0.85);
+  backdrop-filter: blur(4px);
+  color: var(--paper);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background-color 0.15s ease;
+}
+
+.map-frame-wrapper:hover .map-overlay-badge {
+  background: var(--forest);
+}
