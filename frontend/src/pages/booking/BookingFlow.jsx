@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getAgency, getDestination } from '../../data/mockData'
 import { getPackageById, listSchedulesForPackage } from '../../data/store'
@@ -8,6 +8,12 @@ import './Booking.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 const STEPS = ['Schedule', 'Review', 'Payment', 'Receipt']
 const PAYMENT_METHODS = ['bKash', 'Nagad', 'Card']
+
+function createMockTransactionId() {
+  const stamp = Date.now().toString(36).toUpperCase()
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase()
+  return `TRX-${stamp}-${random}`
+}
 
 export default function BookingFlow() {
   const { packageId } = useParams()
@@ -20,10 +26,16 @@ export default function BookingFlow() {
   const [scheduleID, setScheduleID] = useState(schedules[0]?.scheduleID || '')
   const [groupSize, setGroupSize] = useState(1)
   const [method, setMethod] = useState('bKash')
-  const [transactionId, setTransactionId] = useState('')
+  const [transactionId, setTransactionId] = useState(() => createMockTransactionId())
   const [processing, setProcessing] = useState(false)
   const [paymentError, setPaymentError] = useState('')
   const [paymentReceipt, setPaymentReceipt] = useState(null)
+
+  useEffect(() => {
+    if (!transactionId) {
+      setTransactionId(createMockTransactionId())
+    }
+  }, [transactionId])
 
   if (!pkg) {
     return (
@@ -53,9 +65,8 @@ export default function BookingFlow() {
     setStep(2)
   }
 
-  function generateMockTrxId() {
-    const random = `${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-    setTransactionId(`TRX-${random}`)
+  const handleStepClick = (targetStep) => {
+    setStep(targetStep)
   }
 
   async function handlePayment(e) {
@@ -69,14 +80,18 @@ export default function BookingFlow() {
     setProcessing(true)
     setPaymentError('')
 
+    const safePackageId = Number(pkg?.packageID ?? packageId ?? 1)
+    const safeScheduleId = Number(scheduleID || schedules?.[0]?.scheduleID || 1)
+    const safeGroupSize = Number(groupSize || 1)
+
     try {
       const payload = {
-        package_id: Number(pkg.packageID),
-        schedule_id: Number(scheduleID),
-        group_size: Number(groupSize),
+        package_id: safePackageId,
+        schedule_id: safeScheduleId,
+        group_size: safeGroupSize,
         amount: Number(total),
         payment_method: method,
-        transaction_id: transactionId.trim() || undefined,
+        transaction_id: transactionId.trim() || createMockTransactionId(),
       }
 
       const response = await fetch(`${API_URL}/bookings/pay`, {
@@ -114,7 +129,20 @@ export default function BookingFlow() {
 
       <div className="booking-steps">
         {STEPS.map((s, i) => (
-          <div key={s} className={'booking-step' + (i === step ? ' active' : i < step ? ' done' : '')}>
+          <div
+            key={s}
+            className={'booking-step' + (i === step ? ' active' : i < step ? ' done' : '')}
+            onClick={() => handleStepClick(i)}
+            style={{ cursor: 'pointer' }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleStepClick(i)
+              }
+            }}
+          >
             {i + 1}. {s}
           </div>
         ))}
@@ -205,10 +233,7 @@ export default function BookingFlow() {
 
           {step === 2 && (
             <form className="card card-pad" onSubmit={handlePayment}>
-              <h3 style={{ marginTop: 0 }}>Demo Payment</h3>
-              <p className="detail-body-text">
-                Complete the payment step to confirm your tour package. This form uses the project backend and stores a mock payment record.
-              </p>
+              <h3 style={{ marginTop: 0 }}>Payment</h3>
 
               <div className="payment-methods" role="radiogroup" aria-label="Payment method selector">
                 {PAYMENT_METHODS.map((m) => (
@@ -226,20 +251,13 @@ export default function BookingFlow() {
 
               <div className="field" style={{ marginBottom: 16 }}>
                 <label htmlFor="transactionId">Transaction ID</label>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <input
-                    id="transactionId"
-                    type="text"
-                    value={transactionId}
-                    onChange={(e) => setTransactionId(e.target.value)}
-                    placeholder="TRX-..."
-                    style={{ flex: 1 }}
-                  />
-                  <button type="button" className="btn btn-ghost" onClick={generateMockTrxId}>
-                    Generate Mock TRX ID
-                  </button>
-                </div>
-                <span className="hint">Use a mock ID for demo checkout during evaluation.</span>
+                <input
+                  id="transactionId"
+                  type="text"
+                  value={transactionId}
+                  onChange={(e) => setTransactionId(e.target.value)}
+                  placeholder="TRX-..."
+                />
               </div>
 
               <div className="summary-total" style={{ marginBottom: 16 }}>
@@ -260,39 +278,96 @@ export default function BookingFlow() {
           )}
 
           {step === 3 && paymentReceipt && (
-            <div className="card card-pad">
-              <div className="booking-status-banner form-success-banner" style={{ marginBottom: 20 }}>
-                <strong>Payment successful</strong>
+            <div className="card card-pad ticket-slip-card">
+              <div className="ticket-success-banner">
+                <div className="ticket-checkmark">✓</div>
+                <div>
+                  <div className="ticket-success-title">Payment Completed &amp; Tour Package Booked!</div>
+                  <div className="ticket-status-badge">Confirmed</div>
+                </div>
               </div>
 
-              <h3 style={{ marginTop: 0 }}>Booking receipt</h3>
-              <div className="summary-row">
-                <span>Booking status</span>
-                <span>{paymentReceipt.booking?.payment_status === 'paid' ? 'CONFIRMED' : paymentReceipt.booking?.payment_status}</span>
-              </div>
-              <div className="summary-row">
-                <span>Payment method</span>
-                <span>{paymentReceipt.payment?.payment_method}</span>
-              </div>
-              <div className="summary-row">
-                <span>Transaction ID</span>
-                <span>{paymentReceipt.payment?.transaction_id}</span>
-              </div>
-              <div className="summary-row">
-                <span>Amount paid</span>
-                <span>৳{Number(paymentReceipt.payment?.amount || total).toLocaleString()}</span>
-              </div>
-              <div className="summary-row">
-                <span>Booking ID</span>
-                <span>{paymentReceipt.booking?.booking_id}</span>
+              <div className="ticket-slip">
+                <div className="ticket-slip-header">
+                  <div>
+                    <span className="ticket-brand">OVIZATRI</span>
+                    <p>Travel Booking Voucher</p>
+                  </div>
+                  <div className="ticket-slip-code">E-TICKET</div>
+                </div>
+
+                <div className="ticket-divider" aria-hidden="true" />
+
+                <div className="ticket-slip-body">
+                  <div className="ticket-row">
+                    <span>Booking / Ticket No.</span>
+                    <strong>{paymentReceipt.booking?.booking_id || 'BKG-NEW'}</strong>
+                  </div>
+                  <div className="ticket-row">
+                    <span>Transaction ID</span>
+                    <strong>{paymentReceipt.payment?.transaction_id || transactionId}</strong>
+                  </div>
+
+                  <div className="ticket-grid">
+                    <div className="ticket-metric">
+                      <span>Package</span>
+                      <strong>{pkg.title}</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Destination</span>
+                      <strong>{destination?.name || 'Tour Destination'}</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Duration</span>
+                      <strong>{pkg.duration} day{pkg.duration > 1 ? 's' : ''}</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Customer</span>
+                      <strong>{account?.fullname || account?.username || account?.email || 'Guest Traveller'}</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Payment Method</span>
+                      <strong>{paymentReceipt.payment?.payment_method || method}</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Status</span>
+                      <strong>Paid</strong>
+                    </div>
+                    <div className="ticket-metric">
+                      <span>Travelers</span>
+                      <strong>{groupSize}</strong>
+                    </div>
+                    <div className="ticket-metric ticket-price-box">
+                      <span>Amount Paid</span>
+                      <strong>৳{Number(paymentReceipt.payment?.amount || total).toLocaleString()}</strong>
+                    </div>
+                  </div>
+
+                  <div className="ticket-meta-row">
+                    <span>Date &amp; Time of Booking</span>
+                    <strong>
+                      {new Date(paymentReceipt.payment?.payment_date || Date.now()).toLocaleString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="ticket-barcode" aria-hidden="true">
+                  <span>||||||||||||||||||||||||||||||||||||||||||||||||</span>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-                <button className="btn btn-primary" onClick={() => navigate('/packages')}>
-                  Back to packages
+              <div className="ticket-actions">
+                <button className="btn btn-primary" onClick={() => window.print()}>
+                  Download / Print Ticket Slip
                 </button>
-                <button className="btn btn-ghost" onClick={() => navigate('/')}>
-                  Home
+                <button className="btn btn-ghost" onClick={() => navigate('/dashboard/bookings')}>
+                  View All Bookings
                 </button>
               </div>
             </div>
