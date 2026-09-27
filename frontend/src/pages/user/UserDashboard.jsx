@@ -279,7 +279,7 @@ function MyBlogs() {
 }
 
 function Profile() {
-  const { account, logout } = useAuth()
+  const { account, logout, updateAccount } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ 
     fullname: account?.fullname || '', 
@@ -289,16 +289,67 @@ function Profile() {
   })
   const [saved, setSaved] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [saving, setSaving] = useState(false)
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
   function handleChange(e) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+
+    if (!account?.token) {
+      setDeleteError('Please sign in again to update your profile.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch(`${API_URL}/users/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${account.token}`,
+        },
+        body: JSON.stringify({
+          fullname: form.fullname,
+          phone: form.phone,
+          gender: form.gender,
+          dob: form.dob,
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.message || 'Profile update failed.')
+      }
+
+      const nextSession = JSON.parse(localStorage.getItem('ovizatri.session') || '{}')
+      const updatedSession = {
+        ...nextSession,
+        fullname: form.fullname,
+        phone: form.phone,
+        gender: form.gender,
+        dob: form.dob,
+      }
+
+      localStorage.setItem('ovizatri.session', JSON.stringify(updatedSession))
+      updateAccount({
+        ...account,
+        fullname: form.fullname,
+        phone: form.phone,
+        gender: form.gender,
+        dob: form.dob,
+      })
+
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (error) {
+      setDeleteError(error.message || 'Could not update profile.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDeleteAccount() {
@@ -371,8 +422,8 @@ function Profile() {
             <label htmlFor="dob">Date of birth</label>
             <input id="dob" name="dob" type="date" value={form.dob} onChange={handleChange} />
           </div>
-          <button type="submit" className="btn btn-primary">
-            Save Changes
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
       </div>

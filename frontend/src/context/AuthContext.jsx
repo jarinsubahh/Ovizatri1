@@ -89,7 +89,11 @@ export function AuthProvider({ children }) {
   }
   function logout() { persist(null) }
 
-  return <AuthContext.Provider value={{ account, role: account?.accountType ?? null, loading, login, logout, signUpUser, signUpAgency }}>{children}</AuthContext.Provider>
+  function updateAccount(nextAccount) {
+    persist(nextAccount)
+  }
+
+  return <AuthContext.Provider value={{ account, role: account?.accountType ?? null, loading, login, logout, signUpUser, signUpAgency, updateAccount }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
