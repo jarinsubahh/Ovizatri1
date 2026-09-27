@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getAgency, getDestination } from '../../data/mockData'
-import { createBooking, getPackageById, listSchedulesForPackage, recordPayment } from '../../data/store'
+import { getPackageById, listSchedulesForPackage } from '../../data/store'
 import { useAuth } from '../../context/AuthContext'
 import './Booking.css'
 
-const STEPS = ['Schedule', 'Review', 'Payment']
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const STEPS = ['Schedule', 'Review', 'Payment', 'Receipt']
 const PAYMENT_METHODS = ['bKash', 'Nagad', 'Card']
 
 export default function BookingFlow() {
@@ -18,9 +19,11 @@ export default function BookingFlow() {
   const [step, setStep] = useState(0)
   const [scheduleID, setScheduleID] = useState(schedules[0]?.scheduleID || '')
   const [groupSize, setGroupSize] = useState(1)
-  const [booking, setBooking] = useState(null)
   const [method, setMethod] = useState('bKash')
+  const [transactionId, setTransactionId] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [paymentError, setPaymentError] = useState('')
+  const [paymentReceipt, setPaymentReceipt] = useState(null)
 
   if (!pkg) {
     return (
@@ -47,31 +50,56 @@ export default function BookingFlow() {
   }
 
   function confirmBooking() {
-    const record = createBooking({
-      userID: account.userID,
-      packageID: pkg.packageID,
-      scheduleID,
-      bookingDate: new Date().toISOString().slice(0, 10),
-      groupSize,
-      totalAmount: total,
-    })
-    setBooking(record)
     setStep(2)
   }
 
-  function handlePayment(e) {
+  function generateMockTrxId() {
+    const random = `${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+    setTransactionId(`TRX-${random}`)
+  }
+
+  async function handlePayment(e) {
     e.preventDefault()
+
+    if (!account?.token) {
+      setPaymentError('Please sign in to complete the demo payment.')
+      return
+    }
+
     setProcessing(true)
-    // Simulated gateway round-trip — no real payment provider is connected yet.
-    setTimeout(() => {
-      recordPayment(booking.bookingID, {
-        amountPaid: total,
-        paymentGateway: method,
-        transactionID: `TXN-${Math.floor(Math.random() * 90000) + 10000}`,
+    setPaymentError('')
+
+    try {
+      const payload = {
+        package_id: Number(pkg.packageID),
+        schedule_id: Number(scheduleID),
+        group_size: Number(groupSize),
+        amount: Number(total),
+        payment_method: method,
+        transaction_id: transactionId.trim() || undefined,
+      }
+
+      const response = await fetch(`${API_URL}/bookings/pay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${account.token}`,
+        },
+        body: JSON.stringify(payload),
       })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.message || 'Demo payment failed.')
+      }
+
+      setPaymentReceipt(data)
+      setStep(3)
+    } catch (error) {
+      setPaymentError(error.message || 'Could not complete the demo payment.')
+    } finally {
       setProcessing(false)
-      navigate(`/bookings/${booking.bookingID}`)
-    }, 700)
+    }
   }
 
   return (
@@ -175,37 +203,99 @@ export default function BookingFlow() {
             </div>
           )}
 
-          {step === 2 && booking && (
+          {step === 2 && (
             <form className="card card-pad" onSubmit={handlePayment}>
-              <h3 style={{ marginTop: 0 }}>Payment</h3>
+              <h3 style={{ marginTop: 0 }}>Demo Payment</h3>
               <p className="detail-body-text">
-                This is a placeholder payment step for the frontend prototype — no real payment gateway is connected yet.
+                Complete the payment step to confirm your tour package. This form uses the project backend and stores a mock payment record.
               </p>
-              <div className="payment-methods">
+
+              <div className="payment-methods" role="radiogroup" aria-label="Payment method selector">
                 {PAYMENT_METHODS.map((m) => (
-                  <div key={m} className={'payment-method' + (method === m ? ' selected' : '')} onClick={() => setMethod(m)}>
+                  <button
+                    key={m}
+                    type="button"
+                    className={'payment-method' + (method === m ? ' selected' : '')}
+                    onClick={() => setMethod(m)}
+                    aria-pressed={method === m}
+                  >
                     {m}
-                  </div>
+                  </button>
                 ))}
               </div>
-              <div className="field-row">
-                <div className="field">
-                  <label htmlFor="cardNo">Account / card number</label>
-                  <input id="cardNo" placeholder="XXXX-XXXX-XXXX" required />
+
+              <div className="field" style={{ marginBottom: 16 }}>
+                <label htmlFor="transactionId">Transaction ID</label>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    id="transactionId"
+                    type="text"
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    placeholder="TRX-..."
+                    style={{ flex: 1 }}
+                  />
+                  <button type="button" className="btn btn-ghost" onClick={generateMockTrxId}>
+                    Generate Mock TRX ID
+                  </button>
                 </div>
-                <div className="field">
-                  <label htmlFor="pin">PIN</label>
-                  <input id="pin" type="password" placeholder="****" required />
-                </div>
+                <span className="hint">Use a mock ID for demo checkout during evaluation.</span>
               </div>
+
               <div className="summary-total" style={{ marginBottom: 16 }}>
                 <span>Amount payable</span>
                 <span>৳{total.toLocaleString()}</span>
               </div>
+
+              {paymentError && (
+                <div className="form-error-banner" style={{ marginBottom: 16 }}>
+                  {paymentError}
+                </div>
+              )}
+
               <button type="submit" className="btn btn-primary btn-block" disabled={processing}>
-                {processing ? 'Processing...' : `Pay with ${method}`}
+                {processing ? 'Processing...' : 'Confirm & Pay'}
               </button>
             </form>
+          )}
+
+          {step === 3 && paymentReceipt && (
+            <div className="card card-pad">
+              <div className="booking-status-banner form-success-banner" style={{ marginBottom: 20 }}>
+                <strong>Payment successful</strong>
+              </div>
+
+              <h3 style={{ marginTop: 0 }}>Booking receipt</h3>
+              <div className="summary-row">
+                <span>Booking status</span>
+                <span>{paymentReceipt.booking?.payment_status === 'paid' ? 'CONFIRMED' : paymentReceipt.booking?.payment_status}</span>
+              </div>
+              <div className="summary-row">
+                <span>Payment method</span>
+                <span>{paymentReceipt.payment?.payment_method}</span>
+              </div>
+              <div className="summary-row">
+                <span>Transaction ID</span>
+                <span>{paymentReceipt.payment?.transaction_id}</span>
+              </div>
+              <div className="summary-row">
+                <span>Amount paid</span>
+                <span>৳{Number(paymentReceipt.payment?.amount || total).toLocaleString()}</span>
+              </div>
+              <div className="summary-row">
+                <span>Booking ID</span>
+                <span>{paymentReceipt.booking?.booking_id}</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <button className="btn btn-primary" onClick={() => navigate('/packages')}>
+                  Back to packages
+                </button>
+                <button className="btn btn-ghost" onClick={() => navigate('/')}>
+                  Home
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

@@ -10,7 +10,14 @@
     "seed-admin": "node src/utils/seedAdmin.js",
     "init-db": "node src/utils/initDb.js"
   },
-  "keywords": ["travel", "tourism", "express", "postgresql", "jwt", "auth"],
+  "keywords": [
+    "travel",
+    "tourism",
+    "express",
+    "postgresql",
+    "jwt",
+    "auth"
+  ],
   "author": "Ovizatri Team",
   "license": "ISC",
   "dependencies": {
@@ -20,7 +27,7 @@
     "express": "^4.19.2",
     "express-validator": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0",
+    "morgan": "^1.12.0",
     "pg": "^8.11.5"
   },
   "devDependencies": {

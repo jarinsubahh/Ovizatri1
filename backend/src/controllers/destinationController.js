@@ -92,12 +92,23 @@ const getDestinationById = async (req, res, next) => {
 
 const createDestination = async (req, res, next) => {
   try {
-    const { name, division, description, category } = req.body;
+    const { name, division, category, description, avg_rating, image_url } = req.body;
     const accountId = req.user?.id || req.user?.account_id;
     const role = req.user?.role || req.user?.account_type;
 
-    if (!name || !division || !description || !category) {
-      return res.status(400).json({ success: false, message: 'All destination fields are required.' });
+    if (!name?.trim() || !division?.trim() || !category?.trim() || !description?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, division, category, and description are required.',
+      });
+    }
+
+    const rating = avg_rating ? Number(avg_rating) : 5.0;
+    if (rating < 0 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 0 and 5.',
+      });
     }
 
     const existing = await db.query(
@@ -113,16 +124,20 @@ const createDestination = async (req, res, next) => {
 
     const initialStatus = role === 'admin' ? 'approved' : 'pending';
 
-    const insertQuery = `
-      INSERT INTO destination (name, division, description, category, status, created_by_account_id)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
+    const query = `
+      INSERT INTO destination (name, division, category, description, avg_rating, image_url, status, created_by_account_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING destination_id AS "destinationID", name, division, category, description,
+                avg_rating AS "avgRating", image_url AS "image", status, created_by_account_id
     `;
-    const result = await db.query(insertQuery, [
+
+    const result = await db.query(query, [
       name.trim(),
-      division,
-      description,
-      category,
+      division.trim(),
+      category.trim(),
+      description.trim(),
+      rating,
+      image_url?.trim() || null,
       initialStatus,
       accountId,
     ]);
@@ -133,10 +148,17 @@ const createDestination = async (req, res, next) => {
         role === 'admin'
           ? 'Destination added and published directly.'
           : 'Destination request submitted for admin review.',
-      data: result.rows[0],
+      destination: result.rows[0],
     });
   } catch (error) {
-    next(error);
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'A destination with this name already exists.',
+      });
+    }
+    console.error('Create destination error:', error);
+    return next(error);
   }
 };
 
@@ -188,64 +210,11 @@ const updateDestinationStatus = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/destinations (Admin only)
- */
-const createDestination = async (req, res) => {
-  try {
-    const { name, division, category, description, avg_rating, image_url } = req.body;
-
-    if (!name?.trim() || !division?.trim() || !category?.trim() || !description?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Name, division, category, and description are required.',
-      });
-    }
-
-    const rating = avg_rating ? Number(avg_rating) : 5.0;
-    if (rating < 0 || rating > 5) {
-      return res.status(400).json({
-        success: false,
-        message: 'Rating must be between 0 and 5.',
-      });
-    }
-
-    const query = `
-      INSERT INTO destination (name, division, category, description, avg_rating, image_url)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING destination_id AS "destinationID", name, division, category, description,
-                avg_rating AS "avgRating", image_url AS "image"
-    `;
-
-    const result = await db.query(query, [
-      name.trim(),
-      division.trim(),
-      category.trim(),
-      description.trim(),
-      rating,
-      image_url?.trim() || null,
-    ]);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Destination created successfully!',
-      destination: result.rows[0],
-    });
-  } catch (error) {
-    if (error.code === '23505') {
-      return res.status(409).json({
-        success: false,
-        message: 'A destination with this name already exists.',
-      });
-    }
-    console.error('Create destination error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to create destination.' });
-  }
-};
-
 module.exports = {
   getTopRatedDestinations,
   getAllDestinations,
   getDestinationById,
   createDestination,
+  getPendingDestinations,
+  updateDestinationStatus,
 };

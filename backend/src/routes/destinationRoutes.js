@@ -11,7 +11,4 @@ router.get('/:id', destinationController.getDestinationById);
 router.post('/', authenticateToken, authorizeRoles('user', 'agency', 'admin'), destinationController.createDestination);
 router.patch('/:id/status', authenticateToken, authorizeRoles('admin'), destinationController.updateDestinationStatus);
 
-// Protected Admin creation route
-router.post('/', authenticateToken, authorizeRoles('admin'), destinationController.createDestination);
-
 module.exports = router;
