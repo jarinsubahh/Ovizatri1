@@ -359,17 +359,22 @@ CREATE TABLE IF NOT EXISTS payments (
     payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE OR REPLACE FUNCTION calculate_booking_amount(p_package_id INT, p_travelers INT)
-RETURNS NUMERIC
+CREATE OR REPLACE FUNCTION calculate_booking_amount(p_package_id INT, p_group_size INT)
+RETURNS NUMERIC(10, 2)
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_price NUMERIC(12,2);
     v_discount NUMERIC(5,2);
-    v_amount NUMERIC(12,2);
+    v_effective_unit_price NUMERIC(12,2);
+    v_total NUMERIC(12,2);
 BEGIN
-    IF p_travelers IS NULL OR p_travelers <= 0 THEN
-        RAISE EXCEPTION 'Travelers count must be greater than zero';
+    IF p_package_id IS NULL THEN
+        RAISE EXCEPTION 'Package ID is required';
+    END IF;
+
+    IF p_group_size IS NULL OR p_group_size <= 0 THEN
+        RAISE EXCEPTION 'Group size must be greater than zero';
     END IF;
 
     SELECT price, COALESCE(discount, 0)
@@ -381,8 +386,113 @@ BEGIN
         RAISE EXCEPTION 'Package not found for booking amount calculation';
     END IF;
 
-    v_amount := (v_price * p_travelers) * (1 - (v_discount / 100));
-    RETURN ROUND(v_amount, 2);
+    v_effective_unit_price := v_price * (1.0 - (v_discount / 100.0));
+    v_total := v_effective_unit_price * p_group_size;
+
+    RETURN ROUND(v_total, 2);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_get_package_occupancy_rate(p_package_id INT)
+RETURNS NUMERIC(5, 2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_max_seat INTEGER;
+    v_booked_seats BIGINT;
+    v_rate NUMERIC(5,2);
+BEGIN
+    IF p_package_id IS NULL THEN
+        RETURN 0.00;
+    END IF;
+
+    SELECT max_seat
+      INTO v_max_seat
+    FROM tour_package
+    WHERE package_id = p_package_id;
+
+    IF NOT FOUND OR v_max_seat IS NULL OR v_max_seat <= 0 THEN
+        RETURN 0.00;
+    END IF;
+
+    SELECT COALESCE(SUM(b.group_size), 0)
+      INTO v_booked_seats
+    FROM booking b
+    WHERE b.package_id = p_package_id
+      AND b.payment_status IS DISTINCT FROM 'cancelled'
+      AND b.payment_status IS NOT NULL;
+
+    v_rate := (v_booked_seats::NUMERIC / v_max_seat::NUMERIC) * 100.0;
+    RETURN ROUND(v_rate, 2);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION fn_get_agency_performance_score(p_agency_id INT)
+RETURNS NUMERIC(5, 2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_avg_review_rating NUMERIC(5,2);
+    v_total_reviews INTEGER;
+    v_total_bookings INTEGER;
+    v_paid_bookings INTEGER;
+    v_conversion_rate NUMERIC(5,2);
+    v_experience_score NUMERIC(5,2);
+    v_agency_experience INTEGER;
+    v_score NUMERIC(5,2);
+BEGIN
+    IF p_agency_id IS NULL THEN
+        RETURN 0.00;
+    END IF;
+
+    SELECT COALESCE(AVG(r.rating), 0)
+      INTO v_avg_review_rating
+    FROM review r
+    JOIN tour_package tp ON tp.package_id = r.package_id
+    WHERE tp.agency_id = p_agency_id;
+
+    SELECT COUNT(*), COALESCE(SUM(CASE WHEN b.payment_status = 'paid' THEN 1 ELSE 0 END), 0)
+      INTO v_total_reviews, v_paid_bookings
+    FROM booking b
+    WHERE b.package_id IN (
+        SELECT package_id
+        FROM tour_package
+        WHERE agency_id = p_agency_id
+    );
+
+    v_total_bookings := COALESCE(v_total_reviews, 0);
+    v_total_reviews := COALESCE(v_total_reviews, 0);
+
+    IF v_total_bookings > 0 THEN
+        v_conversion_rate := (v_paid_bookings::NUMERIC / v_total_bookings::NUMERIC) * 100.0;
+    ELSE
+        v_conversion_rate := 0.00;
+    END IF;
+
+    SELECT COALESCE(experience_years, 0)
+      INTO v_agency_experience
+    FROM agency
+    WHERE agency_id = p_agency_id;
+
+    IF v_agency_experience IS NULL THEN
+        v_agency_experience := 0;
+    END IF;
+
+    v_experience_score := LEAST((v_agency_experience::NUMERIC / 10.0) * 100.0, 100.0);
+
+    v_score := (
+        (COALESCE(v_avg_review_rating, 0) / 5.0) * 40.0
+        + COALESCE(v_conversion_rate, 0) * 0.40
+        + (LEAST(v_experience_score, 100.0) * 0.20)
+    );
+
+    IF v_score < 0 THEN
+        v_score := 0.00;
+    ELSIF v_score > 100 THEN
+        v_score := 100.00;
+    END IF;
+
+    RETURN ROUND(v_score, 2);
 END;
 $$;
 
