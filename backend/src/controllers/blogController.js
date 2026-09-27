@@ -88,7 +88,7 @@ exports.createBlog = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Title and content are required' });
     }
 
-    // Slug তৈরি করা
+    
     const generatedSlug = title
       .toLowerCase()
       .trim()

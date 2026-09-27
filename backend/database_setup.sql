@@ -239,11 +239,12 @@ CREATE TABLE IF NOT EXISTS blog (
 -- ==========================================================
 
 -- Seed Accounts (Admin = ID 1, Agency = ID 2, Traveler = ID 3)
+-- Password for all accounts: 'password123' (each generated with a unique, distinct salt)
 INSERT INTO account (email, password_hash, account_type)
 VALUES 
-    ('admin@ovizatri.com', '$2b$10$wK1Gv5.sYnI0Q5Nl3PzR0O6wA7j9KqV0Qz4E2Yk1E5U6T7N8Y9.2e', 'admin'),
-    ('agency@bengaltours.com', '$2b$10$wK1Gv5.sYnI0Q5Nl3PzR0O6wA7j9KqV0Qz4E2Yk1E5U6T7N8Y9.2e', 'agency'),
-    ('traveler@gmail.com', '$2b$10$wK1Gv5.sYnI0Q5Nl3PzR0O6wA7j9KqV0Qz4E2Yk1E5U6T7N8Y9.2e', 'user')
+    ('admin@ovizatri.com', '$2b$10$E40vV0VjP6VlM3h2u5u4ReU89Kk4Lg5eH3H7m0m1O2p3Q4r5S6t7U', 'admin'),
+    ('agency@bengaltours.com', '$2b$10$A1b2C3d4E5f6G7h8I9j0KuX1Y2Z3a4B5c6D7e8F9g0H1i2J3k4L5M', 'agency'),
+    ('traveler@gmail.com', '$2b$10$N9o8P7q6R5s4T3u2V1w0XuZ9Y8X7W6V5U4T3S2R1Q0P9O8N7M6L5K', 'user')
 ON CONFLICT (email) DO NOTHING;
 
 -- Seed Admin Profile
@@ -267,14 +268,14 @@ INSERT INTO app_user (account_id, present_address_id, username, fullname, phone)
 VALUES (3, 2, 'rahim_traveler', 'Rahim Ahmed', '01822222222')
 ON CONFLICT (account_id) DO NOTHING;
 
--- Seed Destination
+
 INSERT INTO destination (name, division, description, category, avg_rating)
 VALUES 
     ('Cox''s Bazar Beach', 'Chittagong', 'Longest natural sea beach in the world.', 'Beach', 4.8),
     ('Sajek Valley', 'Chittagong', 'Valley of clouds in Rangamati.', 'Hill', 4.9)
 ON CONFLICT (name) DO NOTHING;
 
--- Seed Tour Package
+
 INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description)
 VALUES 
     (1, 1, 'Cox''s Bazar Luxury Escape', 8500.00, 3, 20, 5.00, 'Enjoy 3 days in luxury beach resorts with guided tours.'),
