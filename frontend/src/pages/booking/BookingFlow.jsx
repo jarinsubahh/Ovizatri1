@@ -80,12 +80,15 @@ export default function BookingFlow() {
     setProcessing(true)
     setPaymentError('')
 
-    const safePackageId = Number(pkg?.packageID ?? packageId ?? 1)
+    const safePackageId = Number(pkg?.packageID ?? pkg?.package_id ?? packageId ?? 1)
     const safeScheduleId = Number(scheduleID || schedules?.[0]?.scheduleID || 1)
     const safeGroupSize = Number(groupSize || 1)
 
     try {
+      const pendingBookingId = Number(localStorage.getItem('pending_booking_id') || 0) || null
+
       const payload = {
+        booking_id: pendingBookingId,
         package_id: safePackageId,
         schedule_id: safeScheduleId,
         group_size: safeGroupSize,

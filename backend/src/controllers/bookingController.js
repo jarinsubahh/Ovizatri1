@@ -15,6 +15,51 @@ function normalizePaymentMethod(method) {
   return value;
 }
 
+async function resolvePaymentTable(client) {
+  const tableCheck = await client.query(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name IN ('payments', 'payment')
+     ORDER BY CASE table_name WHEN 'payment' THEN 1 WHEN 'payments' THEN 2 ELSE 3 END
+     LIMIT 1`
+  );
+
+  if (tableCheck.rows.length) {
+    return tableCheck.rows[0].table_name;
+  }
+
+  return 'payment';
+}
+
+async function getPaymentInsertConfig(client, paymentTable) {
+  const columnCheck = await client.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = $1`,
+    [paymentTable]
+  );
+
+  const columns = new Set(columnCheck.rows.map((row) => row.column_name));
+
+  if (columns.has('amount_paid') && columns.has('payment_gateway')) {
+    return {
+      insertSql: `INSERT INTO ${paymentTable} (booking_id, transaction_id, payment_gateway, amount_paid, timestamp)
+                  VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                  RETURNING *`,
+      values: (bookingId, bookingAmount, method, transactionId) => [bookingId, transactionId, method, bookingAmount],
+    };
+  }
+
+  return {
+    insertSql: `INSERT INTO ${paymentTable} (booking_id, amount, payment_method, transaction_id, status, payment_date)
+                VALUES ($1, $2, $3, $4, 'COMPLETED', CURRENT_TIMESTAMP)
+                RETURNING *`,
+    values: (bookingId, bookingAmount, method, transactionId) => [bookingId, bookingAmount, method, transactionId],
+  };
+}
+
 async function createBooking(client, reqUser, payload) {
   const packageId = Number(payload.package_id);
   const scheduleId = Number(payload.schedule_id) || 1;
@@ -111,106 +156,112 @@ const postDemoPayment = async (req, res, next) => {
     const paymentMethod = normalizePaymentMethod(payload.payment_method);
     const transactionId = String(payload.transaction_id || '').trim() || generateMockTransactionId();
     const amount = Number(payload.amount ?? 0);
+    const bookingIdFromRequest = payload.booking_id ?? payload.bookingId ?? req.params?.bookingId ?? null;
+    const packageId = Number(payload.package_id);
+    const scheduleId = Number(payload.schedule_id ?? 1);
     const groupSize = Number(payload.group_size ?? payload.traveler_count ?? 1) || 1;
+
+    const appUserResult = await client.query(
+      'SELECT user_id FROM app_user WHERE account_id = $1 LIMIT 1',
+      [req.user?.id ?? req.user?.account_id ?? 1]
+    );
+    const currentUserId = Number(appUserResult.rows[0]?.user_id ?? req.user?.user_id ?? req.user?.id ?? 1) || 1;
 
     await client.query('BEGIN');
 
-    const userRes = await client.query(
-      'SELECT user_id FROM app_user WHERE account_id = $1',
-      [req.user.id]
-    );
-    const travelerId = userRes.rows[0]?.user_id || 1;
+    let bookingRow;
 
-    let packageId = Number(payload.package_id);
-    if (!Number.isFinite(packageId) || packageId <= 0) {
-      packageId = 0;
-    }
-
-    let pkgRes = await client.query(
-      'SELECT package_id, price, discount, max_seat FROM tour_package WHERE package_id = $1 FOR UPDATE',
-      [packageId]
-    );
-
-    if (!pkgRes.rows.length) {
-      pkgRes = await client.query(
-        'SELECT package_id, price, discount, max_seat FROM tour_package ORDER BY package_id ASC LIMIT 1 FOR UPDATE'
+    if (bookingIdFromRequest !== null && bookingIdFromRequest !== undefined && bookingIdFromRequest !== '') {
+      const bookingResult = await client.query(
+        `SELECT booking_id, user_id, package_id, schedule_id, group_size, total_amount, payment_status
+         FROM booking
+         WHERE booking_id = $1`,
+        [Number(bookingIdFromRequest)]
       );
-    }
 
-    if (!pkgRes.rows.length) {
-      const agencyRes = await client.query('SELECT agency_id FROM agency ORDER BY agency_id ASC LIMIT 1');
-      const destinationRes = await client.query('SELECT destination_id FROM destination ORDER BY destination_id ASC LIMIT 1');
-
-      if (!agencyRes.rows.length || !destinationRes.rows.length) {
-        throw Object.assign(new Error('No valid agency or destination data exists to create a fallback package.'), { statusCode: 500 });
+      if (!bookingResult.rows.length) {
+        throw Object.assign(new Error('Booking info not found.'), { statusCode: 404 });
       }
 
-      const seedPackage = await client.query(
-        `INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description)
-         VALUES ($1, $2, 'Auto Generated Package', 1000, 3, 20, 0, 'Fallback package created during booking payment processing.')
-         RETURNING package_id, price, discount, max_seat`,
-        [Number(agencyRes.rows[0].agency_id), Number(destinationRes.rows[0].destination_id)]
+      bookingRow = bookingResult.rows[0];
+
+      if (Number(bookingRow.user_id) !== currentUserId) {
+        throw Object.assign(new Error('You can only pay for your own booking.'), { statusCode: 403 });
+      }
+    } else {
+      let packageResult = await client.query(
+        'SELECT package_id, max_seat, price, discount FROM tour_package WHERE package_id = $1 FOR UPDATE',
+        [packageId]
       );
 
-      pkgRes = {
-        rows: [seedPackage.rows[0]],
-      };
-    }
+      if (!packageResult.rows.length) {
+        packageResult = await client.query(
+          'SELECT package_id, max_seat, price, discount FROM tour_package ORDER BY package_id ASC LIMIT 1 FOR UPDATE'
+        );
+      }
 
-    const resolvedPkg = pkgRes.rows[0];
-    const resolvedPkgId = Number(resolvedPkg.package_id);
+      if (!packageResult.rows.length) {
+        const agencyResult = await client.query('SELECT agency_id FROM agency ORDER BY agency_id ASC LIMIT 1');
+        const destinationResult = await client.query('SELECT destination_id FROM destination ORDER BY destination_id ASC LIMIT 1');
 
-    let scheduleRes = await client.query(
-      'SELECT schedule_id FROM tour_schedule WHERE package_id = $1 ORDER BY departure_date ASC LIMIT 1',
-      [resolvedPkgId]
-    );
+        if (!agencyResult.rows.length || !destinationResult.rows.length) {
+          throw Object.assign(new Error('Package not found and no valid fallback package can be created.'), { statusCode: 404 });
+        }
 
-    if (!scheduleRes.rows.length) {
-      const defaultDeparture = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-      const defaultReturn = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-      scheduleRes = await client.query(
-        `INSERT INTO tour_schedule (package_id, departure_date, return_date)
-         VALUES ($1, $2::date, $3::date)
-         RETURNING schedule_id`,
-        [resolvedPkgId, defaultDeparture, defaultReturn]
+        const insertedPackage = await client.query(
+          `INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description)
+           VALUES ($1, $2, 'Auto Generated Package', 1000, 3, 20, 0, 'Fallback package created during booking payment processing.')
+           RETURNING package_id, max_seat, price, discount`,
+          [Number(agencyResult.rows[0].agency_id), Number(destinationResult.rows[0].destination_id)]
+        );
+
+        packageResult = { rows: [insertedPackage.rows[0]] };
+      }
+
+      const packageRow = packageResult.rows[0];
+      const resolvedPackageId = Number(packageRow.package_id);
+      const scheduleQuery = await client.query(
+        'SELECT schedule_id FROM tour_schedule WHERE package_id = $1 ORDER BY schedule_id ASC LIMIT 1',
+        [resolvedPackageId]
       );
-    }
 
-    const resolvedScheduleId = Number(scheduleRes.rows[0].schedule_id);
+      let resolvedScheduleId = scheduleId;
+      if (!scheduleQuery.rows.length) {
+        const departureDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const returnDate = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+        const scheduleInsert = await client.query(
+          `INSERT INTO tour_schedule (package_id, departure_date, return_date)
+           VALUES ($1, $2::date, $3::date)
+           RETURNING schedule_id`,
+          [resolvedPackageId, departureDate, returnDate]
+        );
+        resolvedScheduleId = Number(scheduleInsert.rows[0].schedule_id);
+      } else {
+        resolvedScheduleId = Number(scheduleQuery.rows[0].schedule_id);
+      }
 
-    const bookedSeatsRes = await client.query(
-      "SELECT COALESCE(SUM(group_size), 0) AS booked_seats FROM booking WHERE package_id = $1 AND payment_status IS DISTINCT FROM 'cancelled'",
-      [resolvedPkgId]
-    );
+      const totalAmount = amount > 0 ? amount : Number(packageRow.price || 0) * groupSize;
 
-    const maxSeat = Number(resolvedPkg.max_seat || 0);
-    const bookedSeats = Number(bookedSeatsRes.rows[0]?.booked_seats || 0);
-    const remainingSeats = maxSeat - bookedSeats;
-
-    if (remainingSeats < groupSize) {
-      throw Object.assign(
-        new Error('Not enough available seats for this package. Please reduce the group size or choose another package.'),
-        { statusCode: 400 }
+      const bookingInsert = await client.query(
+        `INSERT INTO booking (user_id, package_id, schedule_id, group_size, total_amount, payment_status)
+         VALUES ($1, $2, $3, $4, $5, 'paid')
+         RETURNING *`,
+        [currentUserId, resolvedPackageId, resolvedScheduleId, groupSize, totalAmount]
       );
+
+      bookingRow = bookingInsert.rows[0];
     }
 
-    const price = Number(resolvedPkg.price || 0);
-    const discount = Number(resolvedPkg.discount || 0);
-    const effectiveUnitPrice = price * (1 - discount / 100);
-    const computedAmount = Number(amount) > 0 ? Number(amount) : effectiveUnitPrice * groupSize;
-
-    const bookingRow = await client.query(
-      `INSERT INTO booking (user_id, package_id, schedule_id, group_size, total_amount, payment_status)
-       VALUES ($1, $2, $3, $4, $5, 'paid')
-       RETURNING *`,
-      [travelerId, resolvedPkgId, resolvedScheduleId, groupSize, computedAmount]
-    );
-
-    const paymentRow = await client.query(
-      `INSERT INTO payments (booking_id, amount, payment_method, transaction_id, status, payment_date)
-       VALUES ($1, $2, $3, $4, 'COMPLETED', CURRENT_TIMESTAMP)
-       RETURNING *`,
-      [bookingRow.rows[0].booking_id, computedAmount, paymentMethod, transactionId]
+    const paymentTable = await resolvePaymentTable(client);
+    const paymentInsertConfig = await getPaymentInsertConfig(client, paymentTable);
+    const paymentInsert = await client.query(
+      paymentInsertConfig.insertSql,
+      paymentInsertConfig.values(
+        Number(bookingRow.booking_id),
+        Number(bookingRow.total_amount || amount || 0),
+        paymentMethod,
+        transactionId
+      )
     );
 
     await client.query('COMMIT');
@@ -218,13 +269,13 @@ const postDemoPayment = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Payment processed successfully.',
-      booking: bookingRow.rows[0],
-      payment: paymentRow.rows[0],
+      booking: bookingRow,
+      payment: paymentInsert.rows[0],
       receipt: {
-        bookingId: bookingRow.rows[0].booking_id,
-        amount: Number(paymentRow.rows[0].amount),
-        method: paymentRow.rows[0].payment_method,
-        transactionId: paymentRow.rows[0].transaction_id,
+        bookingId: Number(bookingRow.booking_id),
+        amount: Number(paymentInsert.rows[0].amount),
+        method: paymentInsert.rows[0].payment_method,
+        transactionId: paymentInsert.rows[0].transaction_id,
         status: 'COMPLETED',
       },
     });

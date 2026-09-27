@@ -351,7 +351,7 @@ CREATE TABLE payment (
 
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
-    booking_id INTEGER REFERENCES booking(booking_id) ON DELETE CASCADE,
+    booking_id INTEGER NOT NULL UNIQUE REFERENCES booking(booking_id) ON DELETE CASCADE,
     amount NUMERIC(10,2) NOT NULL CHECK (amount >= 0),
     payment_method VARCHAR(30) CHECK (payment_method IN ('bKash', 'Nagad', 'Rocket', 'Card', 'CashOnArrival')),
     transaction_id VARCHAR(100) UNIQUE NOT NULL,
