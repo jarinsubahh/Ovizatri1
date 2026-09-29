@@ -3,8 +3,49 @@ import { Link, Route, Routes, useNavigate } from 'react-router-dom'
 import DashboardShell from '../../components/layout/DashboardShell'
 import { useAuth } from '../../context/AuthContext'
 import { getDestination, getPackage } from '../../data/mockData'
-import { listBlogsByAccount, listBookingsForUser, listSaved } from '../../data/store'
+import { listBlogsByAccount, listSaved } from '../../data/store'
 import '../../components/layout/DashboardShell.css'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+function useMyBookings() {
+  const { account } = useAuth()
+  const [bookings, setBookings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    async function loadBookings() {
+      if (!account?.token) {
+        setBookings([])
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      setError('')
+      try {
+        const response = await fetch(`${API_URL}/bookings/mine`, {
+          headers: { Authorization: `Bearer ${account.token}` },
+        })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.message || 'Failed to load bookings.')
+        if (active) setBookings(Array.isArray(data.bookings) ? data.bookings : [])
+      } catch (fetchError) {
+        if (active) setError(fetchError.message || 'Failed to load bookings.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadBookings()
+    return () => { active = false }
+  }, [account?.token])
+
+  return { bookings, loading, error }
+}
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Overview', exact: true },
@@ -32,8 +73,8 @@ export default function UserDashboard() {
 
 function Overview() {
   const { account } = useAuth()
+  const { bookings } = useMyBookings()
   const uid = account?.userID || account?.accountID
-  const bookings = listBookingsForUser(uid)
   const saved = listSaved(uid)
   const blogs = listBlogsByAccount(account?.accountID)
 
@@ -76,16 +117,18 @@ function Overview() {
 }
 
 function Bookings() {
-  const { account } = useAuth()
-  const uid = account?.userID || account?.accountID
-  const bookings = listBookingsForUser(uid)
+  const { bookings, loading, error } = useMyBookings()
 
   return (
     <div>
       <div className="dash-section-title">
         <h1>My Bookings</h1>
       </div>
-      {bookings.length === 0 ? (
+      {loading ? (
+        <div className="card card-pad">Loading bookings...</div>
+      ) : error ? (
+        <div className="form-error-banner">{error}</div>
+      ) : bookings.length === 0 ? (
         <div className="empty-state card">
           <h3>No bookings yet</h3>
           <p>Book a tour package to see it listed here.</p>
@@ -103,25 +146,22 @@ function Bookings() {
                 <th>Group</th>
                 <th>Total</th>
                 <th>Status</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
               {bookings.map((b) => {
-                const pkg = getPackage(b.packageID)
+                const status = String(b.paymentStatus || 'pending')
+                const isConfirmed = ['paid', 'confirmed', 'completed'].includes(status.toLowerCase())
                 return (
-                  <tr key={b.bookingID}>
-                    <td>{pkg?.title || b.packageID}</td>
-                    <td>{new Date(b.bookingDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                  <tr key={b.bookingId}>
+                    <td>{b.packageTitle}</td>
+                    <td>{b.bookingDate ? new Date(b.bookingDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     <td>{b.groupSize || 1}</td>
-                    <td>৳{b.totalAmount?.toLocaleString()}</td>
+                    <td>৳{Number(b.totalAmount || 0).toLocaleString()}</td>
                     <td>
-                      <span className={'badge ' + (b.paymentStatus === 'paid' ? 'badge-success' : 'badge-gold')}>{b.paymentStatus}</span>
-                    </td>
-                    <td>
-                      <Link to={`/bookings/${b.bookingID}`} className="btn btn-ghost btn-sm">
-                        View
-                      </Link>
+                      <span className={'badge ' + (isConfirmed ? 'badge-success' : 'badge-gold')}>
+                        {isConfirmed ? 'Confirmed' : status.charAt(0).toUpperCase() + status.slice(1)}
+                      </span>
                     </td>
                   </tr>
                 )
