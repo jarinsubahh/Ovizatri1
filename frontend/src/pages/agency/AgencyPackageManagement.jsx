@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardShell from '../../components/layout/DashboardShell'
 import { useAuth } from '../../context/AuthContext'
@@ -18,58 +18,49 @@ export default function AgencyPackageManagement() {
   const { account } = useAuth()
   const agency = account.agency
   const [, forceUpdate] = React.useReducer((x) => x + 1, 0)
-  const [packages, setPackages] = useState([])
+  const [packages, setPackages] = useState(() => listPackagesByAgency(agency.agencyID))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    let active = true
+  const loadPackages = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/packages/agency/my-packages`, {
+        headers: { Authorization: `Bearer ${account?.token}` },
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.message || 'Failed to refresh package statistics.')
 
-    async function loadPackages() {
-      try {
-        const response = await fetch(`${API_URL}/packages/agency/my-packages`, {
-          headers: { Authorization: `Bearer ${account?.token}` },
-        })
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.message || 'Failed to load agency packages.')
+      const databasePackages = Array.isArray(data.packages) ? data.packages : []
+      const localPackages = listPackagesByAgency(agency.agencyID)
+      const databaseIds = new Set(databasePackages.map((pkg) => String(pkg.packageID ?? pkg.package_id)))
+      const extraLocalPackages = localPackages.filter((pkg) => !databaseIds.has(String(pkg.packageID)))
 
-        const packageRows = Array.isArray(data)
-          ? data
-          : Array.isArray(data.packages)
-            ? data.packages
-            : Array.isArray(data.data)
-              ? data.data
-              : Array.isArray(data.data?.packages)
-                ? data.data.packages
-                : []
-
-        if (active) {
-          setPackages(packageRows.map((p) => ({
-            ...p,
-            packageID: p.packageID ?? p.package_id,
-            destinationID: p.destinationID ?? p.destination_id,
-            maxSeat: p.maxSeat ?? p.max_seat,
-            destinationName: p.destinationName ?? p.destination_name,
-            totalSeatsBooked: p.totalSeatsBooked ?? p.total_seats_booked ?? 0,
-            seatsRemaining: p.seatsRemaining ?? p.seats_remaining,
-            totalRevenueEarned: p.totalRevenueEarned ?? p.total_revenue_earned ?? 0,
-            pendingRequests: p.pendingRequests ?? p.pending_requests ?? 0,
-          })))
-        }
-      } catch (fetchError) {
-        if (active) setError(fetchError.message || 'Failed to load agency packages.')
-      } finally {
-        if (active) setLoading(false)
-      }
+      setPackages([...databasePackages, ...extraLocalPackages])
+      setError('')
+    } catch (fetchError) {
+      setError(fetchError.message || 'Failed to refresh package statistics.')
+      setPackages(listPackagesByAgency(agency.agencyID))
+    } finally {
+      setLoading(false)
     }
+  }, [account?.token, agency.agencyID])
 
+  useEffect(() => {
     loadPackages()
-    return () => { active = false }
-  }, [account?.token])
+
+    const refreshTimer = window.setInterval(loadPackages, 15000)
+    window.addEventListener('focus', loadPackages)
+
+    return () => {
+      window.clearInterval(refreshTimer)
+      window.removeEventListener('focus', loadPackages)
+    }
+  }, [loadPackages])
 
   function handleDelete(id) {
     if (!window.confirm('Remove this tour package? This also removes it from public listings.')) return
     deletePackage(id)
+    setPackages((current) => current.filter((pkg) => String(pkg.packageID ?? pkg.package_id) !== String(id)))
     forceUpdate()
   }
 
@@ -84,7 +75,7 @@ export default function AgencyPackageManagement() {
 
       {loading ? (
         <div className="card card-pad">Loading packages...</div>
-      ) : error ? (
+      ) : error && packages.length === 0 ? (
         <div className="form-error-banner">{error}</div>
       ) : packages.length === 0 ? (
         <div className="empty-state card">
@@ -95,8 +86,8 @@ export default function AgencyPackageManagement() {
           </Link>
         </div>
       ) : (
-        <div className="card">
-          <table className="data-table">
+        <div className="table-responsive card">
+          <table className="data-table agency-package-table">
             <thead>
               <tr>
                 <th>Package</th>
@@ -108,17 +99,17 @@ export default function AgencyPackageManagement() {
                 <th>Remaining</th>
                 <th>Revenue</th>
                 <th>Pending</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {packages.map((p) => {
-                const destination = p.destinationName || getDestination(p.destinationID)?.name
+                const destination = getDestination(p.destinationID)
                 const schedules = listSchedulesForPackage(p.packageID)
                 return (
                   <tr key={p.packageID}>
                     <td>{p.title}</td>
-                    <td>{destination}</td>
+                    <td>{destination?.name}</td>
                     <td>৳{Number(p.price || 0).toLocaleString('en-BD')}</td>
                     <td>{p.duration} day{p.duration > 1 ? 's' : ''}</td>
                     <td>{schedules.length}</td>
@@ -126,7 +117,8 @@ export default function AgencyPackageManagement() {
                     <td>{Number(p.seatsRemaining ?? p.maxSeat ?? 0).toLocaleString('en-BD')}</td>
                     <td>৳{Number(p.totalRevenueEarned || 0).toLocaleString('en-BD')}</td>
                     <td>{Number(p.pendingRequests || 0).toLocaleString('en-BD')}</td>
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td>
+                      <div className="agency-package-actions">
                       <Link to={`/packages/${p.packageID}`} className="btn btn-ghost btn-sm">
                         View
                       </Link>
@@ -136,6 +128,7 @@ export default function AgencyPackageManagement() {
                       <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p.packageID)}>
                         Delete
                       </button>
+                      </div>
                     </td>
                   </tr>
                 )

@@ -408,6 +408,30 @@ textarea:focus-visible,
   border-bottom: none;
 }
 
+.table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.agency-package-table {
+  min-width: 980px;
+  font-size: 0.82rem;
+}
+
+.agency-package-table th,
+.agency-package-table td {
+  padding: 9px 10px;
+  white-space: nowrap;
+}
+
+.agency-package-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 720px) {

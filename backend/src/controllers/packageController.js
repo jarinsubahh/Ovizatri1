@@ -485,9 +485,15 @@ const getAgencyPackages = async (req, res, next) => {
        JOIN agency a ON a.agency_id = p.agency_id
        LEFT JOIN LATERAL (
          SELECT
-           COALESCE(SUM(b.group_size) FILTER (WHERE b.payment_status = 'paid'), 0)::INTEGER AS total_seats_booked,
-           COALESCE(SUM(b.total_amount) FILTER (WHERE b.payment_status = 'paid'), 0)::NUMERIC(12,2) AS total_revenue_earned,
-           COUNT(*) FILTER (WHERE b.payment_status = 'pending')::INTEGER AS pending_requests
+           COALESCE(SUM(b.group_size) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('paid', 'confirmed', 'completed')
+           ), 0)::INTEGER AS total_seats_booked,
+           COALESCE(SUM(b.total_amount) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('paid', 'confirmed', 'completed')
+           ), 0)::NUMERIC(12,2) AS total_revenue_earned,
+           COUNT(*) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('pending', 'unpaid')
+           )::INTEGER AS pending_requests
          FROM booking b
          WHERE b.package_id = p.package_id
        ) booking_stats ON TRUE
