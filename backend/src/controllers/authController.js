@@ -2,7 +2,8 @@ const bcrypt = require('bcrypt');
 const db = require('../config/db');
 const { generateToken } = require('../utils/token');
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
+const FIXED_OTP = '123456';
 
 const sendDatabaseError = (res, error, operation) => {
   if (error.code === '23505') return res.status(409).json({ success: false, message: 'An account with that email or username already exists.' });
@@ -39,7 +40,6 @@ const signupTraveler = async (req, res) => {
       const address = await client.query('INSERT INTO address (street_address) VALUES ($1) RETURNING address_id', [permanentAddress]);
       permanentAddressId = address.rows[0].address_id;
     }
-    // Generate a dedicated, random salt unique to this traveler
     const salt = await bcrypt.genSalt(SALT_ROUNDS);
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -95,7 +95,6 @@ const signupAgency = async (req, res) => {
       return res.status(409).json({ success: false, message: 'An account with this email already exists.' });
     }
     const address = await client.query(`INSERT INTO address (street_address, thana, district, division, postal_code) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [street_address.trim(), thana?.trim() || null, district.trim(), division.trim(), postalCode?.trim() || null]);
-   // Generate a dedicated, random salt unique to this agency
     const salt = await bcrypt.genSalt(SALT_ROUNDS);
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -140,6 +139,7 @@ const toUserPayload = (row) => {
   }
   return user;
 };
+
 const login = async (req, res) => {
   try {
     const identifier = (req.body.email || req.body.username || '').trim().toLowerCase();
@@ -153,7 +153,6 @@ const login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid email/username or password.' });
     }
 
-    // Agency status verification gate
     if (row.role === 'agency') {
       const agencyStatus = row.status || 'pending_review';
       if (agencyStatus === 'pending_review') {
@@ -201,4 +200,149 @@ const getCurrentUser = async (req, res) => {
 
 const logout = (req, res) => res.status(200).json({ success: true, message: 'Logged out successfully.' });
 
-module.exports = { register, signupTraveler, signupAgency, login, getCurrentUser, logout, findAccountById };
+const forgotPassword = async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email?.trim() || !otp?.trim() || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, verification code (OTP), and new password are required.',
+      });
+    }
+
+    if (otp.trim() !== FIXED_OTP) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. (Hint: Use demo code 123456)',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long.',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const accountRes = await client.query(
+      `SELECT account_id FROM account WHERE LOWER(email) = $1`,
+      [normalizedEmail]
+    );
+
+    if (accountRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        message: 'No account registered with this email address.',
+      });
+    }
+
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await client.query(
+      `UPDATE account SET password_hash = $1 WHERE account_id = $2`,
+      [hashedPassword, accountRes.rows[0].account_id]
+    );
+
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset successfully! You can now log in with your new password.',
+    });
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
+    return sendDatabaseError(res, error, 'Password reset');
+  } finally {
+    client.release();
+  }
+};
+
+const changePassword = async (req, res) => {
+  const client = await db.getClient();
+  try {
+    const accountId = req.user.id || req.user.account_id;
+    const { currentPassword, newPassword, otp } = req.body;
+
+    if (!currentPassword || !newPassword || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password, new password, and verification code (OTP) are required.',
+      });
+    }
+
+    if (otp.trim() !== FIXED_OTP) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. (Hint: Use demo code 123456)',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long.',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const accountRes = await client.query(
+      `SELECT password_hash FROM account WHERE account_id = $1`,
+      [accountId]
+    );
+
+    if (accountRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Account not found.' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, accountRes.rows[0].password_hash);
+    if (!isMatch) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, message: 'Current password does not match.' });
+    }
+
+    const salt = await bcrypt.genSalt(SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await client.query(
+      `UPDATE account SET password_hash = $1 WHERE account_id = $2`,
+      [hashedPassword, accountId]
+    );
+
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully!',
+    });
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {}
+    return sendDatabaseError(res, error, 'Change password');
+  } finally {
+    client.release();
+  }
+};
+
+module.exports = {
+  register,
+  signupTraveler,
+  signupAgency,
+  login,
+  getCurrentUser,
+  logout,
+  findAccountById,
+  forgotPassword,
+  changePassword,
+};
