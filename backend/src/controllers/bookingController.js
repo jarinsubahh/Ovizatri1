@@ -155,11 +155,17 @@ const postDemoPayment = async (req, res, next) => {
     const payload = req.body || {};
     const paymentMethod = normalizePaymentMethod(payload.payment_method);
     const transactionId = String(payload.transaction_id || '').trim() || generateMockTransactionId();
-    const amount = Number(payload.amount ?? 0);
     const bookingIdFromRequest = payload.booking_id ?? payload.bookingId ?? req.params?.bookingId ?? null;
     const packageId = Number(payload.package_id);
-    const scheduleId = Number(payload.schedule_id ?? 1);
-    const groupSize = Number(payload.group_size ?? payload.traveler_count ?? 1) || 1;
+    const requestedScheduleId = Number(payload.schedule_id);
+    const groupSize = Number(payload.group_size ?? payload.traveler_count ?? 1);
+
+    if (!Number.isInteger(packageId) || packageId <= 0) {
+      throw Object.assign(new Error('A valid package ID is required.'), { statusCode: 400 });
+    }
+    if (!Number.isInteger(groupSize) || groupSize <= 0) {
+      throw Object.assign(new Error('Group size must be a positive whole number.'), { statusCode: 400 });
+    }
 
     const appUserResult = await client.query(
       'SELECT user_id FROM app_user WHERE account_id = $1 LIMIT 1',
@@ -192,43 +198,46 @@ const postDemoPayment = async (req, res, next) => {
         throw Object.assign(new Error('You can only pay for your own booking.'), { statusCode: 403 });
       }
     } else {
-      let packageResult = await client.query(
+      const packageResult = await client.query(
         'SELECT package_id, max_seat, price, discount FROM tour_package WHERE package_id = $1 FOR UPDATE',
         [packageId]
       );
 
       if (!packageResult.rows.length) {
-        packageResult = await client.query(
-          'SELECT package_id, max_seat, price, discount FROM tour_package ORDER BY package_id ASC LIMIT 1 FOR UPDATE'
-        );
-      }
-
-      if (!packageResult.rows.length) {
-        const agencyResult = await client.query('SELECT agency_id FROM agency ORDER BY agency_id ASC LIMIT 1');
-        const destinationResult = await client.query('SELECT destination_id FROM destination ORDER BY destination_id ASC LIMIT 1');
-
-        if (!agencyResult.rows.length || !destinationResult.rows.length) {
-          throw Object.assign(new Error('Package not found and no valid fallback package can be created.'), { statusCode: 404 });
-        }
-
-        const insertedPackage = await client.query(
-          `INSERT INTO tour_package (agency_id, destination_id, title, price, duration, max_seat, discount, description)
-           VALUES ($1, $2, 'Auto Generated Package', 1000, 3, 20, 0, 'Fallback package created during booking payment processing.')
-           RETURNING package_id, max_seat, price, discount`,
-          [Number(agencyResult.rows[0].agency_id), Number(destinationResult.rows[0].destination_id)]
-        );
-
-        packageResult = { rows: [insertedPackage.rows[0]] };
+        throw Object.assign(new Error('Package not found.'), { statusCode: 404 });
       }
 
       const packageRow = packageResult.rows[0];
       const resolvedPackageId = Number(packageRow.package_id);
-      const scheduleQuery = await client.query(
-        'SELECT schedule_id FROM tour_schedule WHERE package_id = $1 ORDER BY schedule_id ASC LIMIT 1',
+      const bookedSeatsResult = await client.query(
+        `SELECT COALESCE(SUM(group_size), 0) AS booked_seats
+         FROM booking
+         WHERE package_id = $1
+           AND LOWER(TRIM(payment_status)) IN ('paid', 'pending', 'confirmed', 'completed')`,
         [resolvedPackageId]
       );
+      const bookedSeats = Number(bookedSeatsResult.rows[0].booked_seats || 0);
+      if (bookedSeats + groupSize > Number(packageRow.max_seat)) {
+        throw Object.assign(new Error('Not enough seats remain for this package.'), { statusCode: 409 });
+      }
 
-      let resolvedScheduleId = scheduleId;
+      let scheduleQuery;
+      if (Number.isInteger(requestedScheduleId) && requestedScheduleId > 0) {
+        scheduleQuery = await client.query(
+          'SELECT schedule_id FROM tour_schedule WHERE package_id = $1 AND schedule_id = $2',
+          [resolvedPackageId, requestedScheduleId]
+        );
+        if (!scheduleQuery.rows.length) {
+          throw Object.assign(new Error('Selected schedule does not belong to this package.'), { statusCode: 400 });
+        }
+      } else {
+        scheduleQuery = await client.query(
+          'SELECT schedule_id FROM tour_schedule WHERE package_id = $1 ORDER BY schedule_id ASC LIMIT 1',
+          [resolvedPackageId]
+        );
+      }
+
+      let resolvedScheduleId;
       if (!scheduleQuery.rows.length) {
         const departureDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
         const returnDate = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
@@ -243,7 +252,11 @@ const postDemoPayment = async (req, res, next) => {
         resolvedScheduleId = Number(scheduleQuery.rows[0].schedule_id);
       }
 
-      const totalAmount = amount > 0 ? amount : Number(packageRow.price || 0) * groupSize;
+      const amountResult = await client.query(
+        'SELECT calculate_booking_amount($1, $2) AS total',
+        [resolvedPackageId, groupSize]
+      );
+      const totalAmount = Number(amountResult.rows[0].total);
 
       const bookingInsert = await client.query(
         `INSERT INTO booking (user_id, package_id, schedule_id, group_size, total_amount, payment_status)
@@ -261,10 +274,15 @@ const postDemoPayment = async (req, res, next) => {
       paymentInsertConfig.insertSql,
       paymentInsertConfig.values(
         Number(bookingRow.booking_id),
-        Number(bookingRow.total_amount || amount || 0),
+        Number(bookingRow.total_amount ?? 0),
         paymentMethod,
         transactionId
       )
+    );
+
+    await client.query(
+      "UPDATE booking SET payment_status = 'paid' WHERE booking_id = $1",
+      [Number(bookingRow.booking_id)]
     );
 
     await client.query('COMMIT');
@@ -276,8 +294,8 @@ const postDemoPayment = async (req, res, next) => {
       payment: paymentInsert.rows[0],
       receipt: {
         bookingId: Number(bookingRow.booking_id),
-        amount: Number(paymentInsert.rows[0].amount),
-        method: paymentInsert.rows[0].payment_method,
+        amount: Number(paymentInsert.rows[0].amount ?? paymentInsert.rows[0].amount_paid),
+        method: paymentInsert.rows[0].payment_method ?? paymentInsert.rows[0].payment_gateway,
         transactionId: paymentInsert.rows[0].transaction_id,
         status: 'COMPLETED',
       },

@@ -6,6 +6,14 @@ const db = require('../config/db');
  */
 const authenticateToken = async (req, res, next) => {
   try {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(500).json({
+        success: false,
+        message: 'Authentication is not configured on this server.',
+      });
+    }
+
     const authHeader = req.headers.authorization;
     let token = null;
 
@@ -22,7 +30,7 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ovizatri_default_jwt_secret');
+    const decoded = jwt.verify(token, jwtSecret);
     const userId = decoded.user_id ?? decoded.id;
 
     const userResult = await db.query(

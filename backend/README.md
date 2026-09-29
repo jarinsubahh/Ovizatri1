@@ -79,12 +79,13 @@ DB_NAME=ovizatri_db
 DB_USER=postgres
 DB_PASSWORD=your_postgres_password
 
-JWT_SECRET=ovizatri_super_secret_jwt_key_2026
+# Set this to a unique, randomly generated secret (do not use a sample/default value).
+JWT_SECRET=replace_with_a_long_random_secret
 JWT_EXPIRES_IN=7d
 
 ADMIN_NAME="System Administrator"
 ADMIN_EMAIL=admin@ovizatri.com
-ADMIN_PASSWORD=Admin@123456
+ADMIN_PASSWORD=replace_with_a_strong_unique_admin_password
 ADMIN_PHONE="+8801700000000"
 ```
 

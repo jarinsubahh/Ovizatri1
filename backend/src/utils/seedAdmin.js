@@ -7,25 +7,21 @@ dotenv.config();
 
 const seedAdmin = async () => {
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@ovizatri.com').trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123456';
+  const adminPassword = process.env.ADMIN_PASSWORD;
   const adminName = process.env.ADMIN_NAME || 'System Administrator';
 
   console.log(`Checking admin user: ${adminEmail}...`);
 
   try {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(adminPassword, salt);
-
     const existing = await db.query('SELECT account_id FROM account WHERE LOWER(email) = LOWER($1)', [adminEmail]);
 
     if (existing.rows.length > 0) {
       const accountId = existing.rows[0].account_id;
-      console.log(`Admin account exists (ID: ${accountId}). Updating password and ensuring admin role...`);
+      console.log(`Admin account exists (ID: ${accountId}). Ensuring admin role...`);
 
-      // Update password_hash AND account_type
       await db.query(
-        `UPDATE account SET password_hash = $1, account_type = 'admin' WHERE account_id = $2`,
-        [hashedPassword, accountId]
+        `UPDATE account SET account_type = 'admin' WHERE account_id = $1`,
+        [accountId]
       );
 
       const admin = await db.query('SELECT 1 FROM admin WHERE account_id = $1', [accountId]);
@@ -35,9 +31,16 @@ const seedAdmin = async () => {
           [accountId, adminName, 'administrator']
         );
       }
-      console.log('Admin password updated successfully.');
+      console.log('Admin role and profile are ready. Existing password was preserved.');
       return;
     }
+
+    if (!adminPassword) {
+      throw new Error('ADMIN_PASSWORD must be configured to create the initial admin account.');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
     const result = await db.query(
       `INSERT INTO account (email, password_hash, account_type)
@@ -52,15 +55,14 @@ const seedAdmin = async () => {
     console.log(`Successfully created Admin account: ${adminEmail}`);
   } catch (error) {
     console.error('Error seeding admin account:', error.message);
-  } finally {
     if (require.main === module) {
-      process.exit(0);
+      process.exitCode = 1;
     }
   }
 };
 
 if (require.main === module) {
-  seedAdmin();
+  seedAdmin().finally(() => db.pool.end());
 }
 
 module.exports = seedAdmin;
