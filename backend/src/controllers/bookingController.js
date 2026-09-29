@@ -165,7 +165,10 @@ const postDemoPayment = async (req, res, next) => {
       'SELECT user_id FROM app_user WHERE account_id = $1 LIMIT 1',
       [req.user?.id ?? req.user?.account_id ?? 1]
     );
-    const currentUserId = Number(appUserResult.rows[0]?.user_id ?? req.user?.user_id ?? req.user?.id ?? 1) || 1;
+    if (!appUserResult.rows.length) {
+      throw Object.assign(new Error('Traveler profile not found for the authenticated account.'), { statusCode: 404 });
+    }
+    const currentUserId = Number(appUserResult.rows[0].user_id);
 
     await client.query('BEGIN');
 
@@ -306,7 +309,43 @@ const postDemoPayment = async (req, res, next) => {
   }
 };
 
+const getMyBookings = async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `SELECT
+         b.booking_id AS "bookingId",
+         b.user_id AS "userId",
+         b.package_id AS "packageId",
+         b.schedule_id AS "scheduleId",
+         b.booking_date AS "bookingDate",
+         b.group_size AS "groupSize",
+         b.total_amount AS "totalAmount",
+         b.payment_status AS "paymentStatus",
+         tp.title AS "packageTitle",
+         tp.duration AS "packageDuration",
+         d.name AS "destinationName",
+         a.agency_name AS "agencyName",
+         ts.departure_date AS "departureDate",
+         ts.return_date AS "returnDate"
+       FROM app_user u
+       JOIN booking b ON b.user_id = u.user_id
+       JOIN tour_package tp ON tp.package_id = b.package_id
+       JOIN destination d ON d.destination_id = tp.destination_id
+       JOIN agency a ON a.agency_id = tp.agency_id
+       LEFT JOIN tour_schedule ts ON ts.schedule_id = b.schedule_id
+       WHERE u.account_id = $1
+       ORDER BY b.booking_date DESC, b.booking_id DESC`,
+      [req.user.id]
+    );
+
+    return res.status(200).json({ success: true, bookings: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   postDemoPayment,
+  getMyBookings,
   generateMockTransactionId,
 };
