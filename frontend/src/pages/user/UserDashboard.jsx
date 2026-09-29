@@ -319,8 +319,7 @@ function MyBlogs() {
 }
 
 function Profile() {
-  const { account, logout, updateAccount } = useAuth()
-  const navigate = useNavigate()
+  const { account } = useAuth()
   const [form, setForm] = useState({ 
     fullname: account?.fullname || '', 
     phone: account?.phone || '', 
@@ -328,153 +327,159 @@ function Profile() {
     dob: account?.dob || '' 
   })
   const [saved, setSaved] = useState(false)
-  const [deleteError, setDeleteError] = useState('')
-  const [saving, setSaving] = useState(false)
+
+  // Change Password States
+  const [passForm, setPassForm] = useState({ currentPassword: '', newPassword: '', otp: '' })
+  const [passMsg, setPassMsg] = useState({ error: '', success: '' })
+  const [passLoading, setPassLoading] = useState(false)
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
   function handleChange(e) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
   }
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault()
-
-    if (!account?.token) {
-      setDeleteError('Please sign in again to update your profile.')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const response = await fetch(`${API_URL}/users/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${account.token}`,
-        },
-        body: JSON.stringify({
-          fullname: form.fullname,
-          phone: form.phone,
-          gender: form.gender,
-          dob: form.dob,
-        }),
-      })
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(data.message || 'Profile update failed.')
-      }
-
-      const nextSession = JSON.parse(localStorage.getItem('ovizatri.session') || '{}')
-      const updatedSession = {
-        ...nextSession,
-        fullname: form.fullname,
-        phone: form.phone,
-        gender: form.gender,
-        dob: form.dob,
-      }
-
-      localStorage.setItem('ovizatri.session', JSON.stringify(updatedSession))
-      updateAccount({
-        ...account,
-        fullname: form.fullname,
-        phone: form.phone,
-        gender: form.gender,
-        dob: form.dob,
-      })
-
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (error) {
-      setDeleteError(error.message || 'Could not update profile.')
-    } finally {
-      setSaving(false)
-    }
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
   }
 
-  async function handleDeleteAccount() {
-    if (!window.confirm('This will permanently delete your account and all related profile data. This action cannot be undone. Continue?')) {
+  async function handlePasswordChange(e) {
+    e.preventDefault()
+    setPassMsg({ error: '', success: '' })
+
+    if (!passForm.currentPassword || !passForm.newPassword || !passForm.otp) {
+      setPassMsg({ error: 'All password fields and OTP are required.', success: '' })
       return
     }
 
     try {
-      const token = account?.token
-      if (!token) {
-        throw new Error('You must be signed in to delete your account.')
-      }
-
-      const response = await fetch(`${API_URL}/users/delete-account`, {
-        method: 'DELETE',
+      setPassLoading(true)
+      const res = await fetch(`${API_URL}/auth/change-password`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${account?.token}`,
         },
+        body: JSON.stringify(passForm),
       })
+      const data = await res.json()
 
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to delete account.')
+      if (!res.ok) {
+        setPassMsg({ error: data.message || 'Failed to change password.', success: '' })
+        return
       }
 
-      logout()
-      navigate('/')
-    } catch (error) {
-      setDeleteError(error.message || 'Could not delete account.')
+      setPassMsg({ error: '', success: 'Password successfully changed!' })
+      setPassForm({ currentPassword: '', newPassword: '', otp: '' })
+    } catch (err) {
+      setPassMsg({ error: 'Network error updating password.', success: '' })
+    } finally {
+      setPassLoading(false)
     }
   }
 
   return (
     <div>
       <div className="dash-section-title">
-        <h1>Profile</h1>
+        <h1>Profile Settings</h1>
       </div>
-      <div className="card card-pad" style={{ maxWidth: 520 }}>
-        {saved && <div className="form-success-banner">Profile updated.</div>}
-        <form onSubmit={handleSubmit}>
-          <div className="field">
-            <label htmlFor="username">Username</label>
-            <input id="username" value={account?.username || ''} disabled />
-          </div>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" value={account?.email || ''} disabled />
-          </div>
-          <div className="field">
-            <label htmlFor="fullname">Full name</label>
-            <input id="fullname" name="fullname" value={form.fullname} onChange={handleChange} />
-          </div>
-          <div className="field-row">
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', alignItems: 'start' }}>
+        {/* Profile Info Form */}
+        <div className="card card-pad">
+          <h3 style={{ marginTop: 0, marginBottom: 14 }}>Personal Details</h3>
+          {saved && <div className="form-success-banner">Profile updated.</div>}
+          <form onSubmit={handleSubmit}>
+            <div className="field">
+              <label htmlFor="username">Username</label>
+              <input id="username" value={account?.username || ''} disabled />
+            </div>
+            <div className="field">
+              <label htmlFor="email">Email</label>
+              <input id="email" value={account?.email || ''} disabled />
+            </div>
+            <div className="field">
+              <label htmlFor="fullname">Full name</label>
+              <input id="fullname" name="fullname" value={form.fullname} onChange={handleChange} />
+            </div>
             <div className="field">
               <label htmlFor="phone">Phone</label>
               <input id="phone" name="phone" value={form.phone} onChange={handleChange} />
             </div>
-            <div className="field">
-              <label htmlFor="gender">Gender</label>
-              <select id="gender" name="gender" value={form.gender} onChange={handleChange}>
-                <option value="">Select</option>
-                <option>Female</option>
-                <option>Male</option>
-                <option>Other</option>
-              </select>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="gender">Gender</label>
+                <select id="gender" name="gender" value={form.gender} onChange={handleChange}>
+                  <option value="">Select</option>
+                  <option>Female</option>
+                  <option>Male</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="dob">Date of birth</label>
+                <input id="dob" name="dob" type="date" value={form.dob} onChange={handleChange} />
+              </div>
             </div>
-          </div>
-          <div className="field" style={{ maxWidth: 200 }}>
-            <label htmlFor="dob">Date of birth</label>
-            <input id="dob" name="dob" type="date" value={form.dob} onChange={handleChange} />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </form>
-      </div>
+            <button type="submit" className="btn btn-primary btn-sm">
+              Save Profile Changes
+            </button>
+          </form>
+        </div>
 
-      <div className="card card-pad" style={{ maxWidth: 520, marginTop: 24, borderColor: '#d32f2f' }}>
-        <h3 style={{ marginTop: 0, color: '#d32f2f' }}>Danger Zone</h3>
-        <p style={{ marginBottom: 16 }}>Permanently delete your traveler account and associated profile data.</p>
-        {deleteError && <div className="form-error-banner">{deleteError}</div>}
-        <button type="button" className="btn btn-danger" onClick={handleDeleteAccount}>
-          Delete Account
-        </button>
+        {/* Change Password Card */}
+        <div className="card card-pad">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <h3 style={{ margin: 0 }}>Change Password</h3>
+            <span className="badge badge-gold" style={{ fontSize: '0.68rem' }}>OTP: 123456</span>
+          </div>
+
+          {passMsg.error && <div className="form-error-banner" style={{ padding: '8px 12px', fontSize: '0.85rem' }}>{passMsg.error}</div>}
+          {passMsg.success && <div className="form-success-banner" style={{ padding: '8px 12px', fontSize: '0.85rem' }}>{passMsg.success}</div>}
+
+          <form onSubmit={handlePasswordChange}>
+            <div className="field">
+              <label htmlFor="currentPassword">Current Password</label>
+              <input
+                id="currentPassword"
+                type="password"
+                value={passForm.currentPassword}
+                onChange={(e) => setPassForm((p) => ({ ...p, currentPassword: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="newPassword">New Password</label>
+              <input
+                id="newPassword"
+                type="password"
+                value={passForm.newPassword}
+                onChange={(e) => setPassForm((p) => ({ ...p, newPassword: e.target.value }))}
+                placeholder="At least 6 characters"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="otp">Verification Code (Fixed: 123456)</label>
+              <input
+                id="otp"
+                type="text"
+                value={passForm.otp}
+                onChange={(e) => setPassForm((p) => ({ ...p, otp: e.target.value }))}
+                placeholder="Enter 123456"
+                required
+              />
+            </div>
+
+            <button type="submit" className="btn btn-outline btn-sm" disabled={passLoading}>
+              {passLoading ? 'Updating Password...' : 'Update Password'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

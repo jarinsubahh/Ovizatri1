@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import ForgotPasswordModal from '../../components/common/ForgotPasswordModal'
 import sundarban from '../../assets/images/sundarban.jpg'
 import './Auth.css'
 
@@ -10,6 +11,7 @@ export default function UserSignIn() {
   const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
+  const [showForgotModal, setShowForgotModal] = useState(false)
 
   const redirectTo = location.state?.from?.pathname || '/dashboard'
 
@@ -47,10 +49,29 @@ export default function UserSignIn() {
               <label htmlFor="email">Email</label>
               <input id="email" name="email" type="email" value={form.email} onChange={handleChange} placeholder="you@example.com" autoComplete="email" />
             </div>
+
             <div className="field">
-              <label htmlFor="password">Password</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label htmlFor="password" style={{ margin: 0 }}>Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '0.78rem',
+                    color: 'var(--river)',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
               <input id="password" name="password" type="password" value={form.password} onChange={handleChange} placeholder="********" autoComplete="current-password" />
             </div>
+
             <button type="submit" className="btn btn-primary btn-block">
               Sign In
             </button>
@@ -71,6 +92,12 @@ export default function UserSignIn() {
           <blockquote>&ldquo;The forest along the bank gets genuinely loud at dusk.&rdquo;</blockquote>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        onClose={() => setShowForgotModal(false)}
+        initialEmail={form.email}
+      />
     </div>
   )
 }

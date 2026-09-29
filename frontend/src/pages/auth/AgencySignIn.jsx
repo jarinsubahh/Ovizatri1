@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import ForgotPasswordModal from '../../components/common/ForgotPasswordModal'
 import sajekValley from '../../assets/images/sajekvalley.jpg'
 import './Auth.css'
 
@@ -10,7 +11,8 @@ export default function AgencySignIn() {
   const location = useLocation()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
-  const [errorType, setErrorType] = useState('') // 'pending', 'rejected', or 'general'
+  const [errorType, setErrorType] = useState('')
+  const [showForgotModal, setShowForgotModal] = useState(false)
 
   const redirectTo = location.state?.from?.pathname || '/agency/dashboard'
 
@@ -56,11 +58,7 @@ export default function AgencySignIn() {
 
           {error && (
             <div 
-              className={
-                errorType === 'pending'
-                  ? 'form-pending-banner'
-                  : 'form-error-banner'
-              }
+              className={errorType === 'pending' ? 'form-pending-banner' : 'form-error-banner'}
               style={{
                 borderRadius: 'var(--radius-s)',
                 padding: '14px',
@@ -94,8 +92,26 @@ export default function AgencySignIn() {
                 autoComplete="email" 
               />
             </div>
+
             <div className="field">
-              <label htmlFor="password">Password</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label htmlFor="password" style={{ margin: 0 }}>Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '0.78rem',
+                    color: 'var(--river)',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
               <input 
                 id="password" 
                 name="password" 
@@ -105,6 +121,7 @@ export default function AgencySignIn() {
                 autoComplete="current-password" 
               />
             </div>
+
             <button type="submit" className="btn btn-primary btn-block">
               Sign In
             </button>
@@ -125,6 +142,12 @@ export default function AgencySignIn() {
           <blockquote>&ldquo;Terraced cottages overlooking the reserve forest.&rdquo;</blockquote>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        onClose={() => setShowForgotModal(false)}
+        initialEmail={form.email}
+      />
     </div>
   )
 }
