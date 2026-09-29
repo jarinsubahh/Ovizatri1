@@ -469,7 +469,38 @@ const getAgencyPackages = async (req, res, next) => {
     if (!agencyProfile) {
       return res.status(404).json({ success: false, message: 'No agency profile found for this account.' });
     }
-    const result = await db.query(packageSelect + ' WHERE p.agency_id = $1 ORDER BY p.package_id DESC', [agencyProfile.agency_id]);
+    const result = await db.query(
+      `SELECT p.package_id AS "packageID", p.title, p.price, p.duration,
+              p.max_seat AS "maxSeat", p.discount, p.description,
+              p.destination_id AS "destinationID", p.agency_id AS "agencyID",
+              d.name AS "destinationName", d.division AS "destinationDivision",
+              d.category AS "destinationCategory", a.agency_name AS "agencyName",
+              a.phone AS "agencyPhone", a.status AS "agencyStatus",
+              booking_stats.total_seats_booked AS "totalSeatsBooked",
+              GREATEST(p.max_seat - booking_stats.total_seats_booked, 0) AS "seatsRemaining",
+              booking_stats.total_revenue_earned AS "totalRevenueEarned",
+              booking_stats.pending_requests AS "pendingRequests"
+       FROM tour_package p
+       JOIN destination d ON d.destination_id = p.destination_id
+       JOIN agency a ON a.agency_id = p.agency_id
+       LEFT JOIN LATERAL (
+         SELECT
+           COALESCE(SUM(b.group_size) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('paid', 'confirmed', 'completed')
+           ), 0)::INTEGER AS total_seats_booked,
+           COALESCE(SUM(b.total_amount) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('paid', 'confirmed', 'completed')
+           ), 0)::NUMERIC(12,2) AS total_revenue_earned,
+           COUNT(*) FILTER (
+             WHERE LOWER(TRIM(b.payment_status)) IN ('pending', 'unpaid')
+           )::INTEGER AS pending_requests
+         FROM booking b
+         WHERE b.package_id = p.package_id
+       ) booking_stats ON TRUE
+       WHERE p.agency_id = $1
+       ORDER BY p.package_id DESC`,
+      [agencyProfile.agency_id]
+    );
     const withAmenities = await attachAmenities(result.rows);
 
     return res.status(200).json({
