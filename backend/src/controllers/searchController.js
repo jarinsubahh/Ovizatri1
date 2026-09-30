@@ -1,15 +1,10 @@
 const db = require('../config/db');
 
-/**
- * GET /api/search?destination=&packageType=&budget=&keyword=
- * Public endpoint. `packageType` matches destination.category
- * (e.g. Beach, Hills, Rivers, Mangrove Forest). `budget` is a max price ceiling.
- */
 const search = async (req, res) => {
   try {
     const { destination, packageType, budget, keyword } = req.query;
 
-    // ---- Destinations ----
+    //  Destinations
     const destParams = [];
     let destQuery = `
       SELECT destination_id AS "destinationID", name, division, category, description,

@@ -144,7 +144,7 @@ exports.reactToReview = async (req, res, next) => {
 
   try {
     const { reviewId } = req.params;
-    const { reaction_type } = req.body; // 'like' | 'dislike'
+    const { reaction_type } = req.body; // like/dislike
     const accountId = req.user.id || req.user.account_id;
     const accountRole = req.user.role || req.user.account_type;
 

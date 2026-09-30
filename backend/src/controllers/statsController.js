@@ -1,9 +1,5 @@
 const db = require('../config/db');
 
-/**
- * GET /api/stats/summary
- * Public, aggregated platform statistics for the homepage.
- */
 const getStatsSummary = async (req, res) => {
   try {
     const [agencies, users, packages, bookings] = await Promise.all([

@@ -232,11 +232,11 @@ CREATE TABLE IF NOT EXISTS blog (
     CONSTRAINT blog_status_check CHECK (status IN ('draft', 'published', 'pending', 'rejected'))
 );
 
--- ==========================================================
+
 -- COMPREHENSIVE SEED DATA (Ordered to respect all Foreign Keys)
 -- Password for all accounts: 'password123'
 -- Hash: $2b$10$wK1Gv5.sYnI0Q5Nl3PzR0O6wA7j9KqV0Qz4E2Yk1E5U6T7N8Y9.2e
--- ==========================================================
+
 
 -- Seed Accounts (Admin = ID 1, Agency = ID 2, Traveler = ID 3)
 -- Password for all accounts: 'password123' (each generated with a unique, distinct salt)
