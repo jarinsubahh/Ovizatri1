@@ -37,6 +37,7 @@ import AgencyProfile from './pages/agency/AgencyProfile'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AgencyAuditLog from './pages/admin/AgencyAuditLog'
 import AdminAgencies from './pages/admin/AdminAgencies'
+import AnalyticsDashboard from './pages/admin/AnalyticsDashboard'
 
 export default function App() {
   return (
@@ -175,6 +176,14 @@ export default function App() {
             element={
               <ProtectedRoute role="admin">
                 <AdminAgencies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute role="admin">
+                <AnalyticsDashboard />
               </ProtectedRoute>
             }
           />

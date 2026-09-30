@@ -6,6 +6,7 @@ import '../../components/layout/DashboardShell.css'
 const NAV_ITEMS = [
   { to: '/admin', label: 'Overview', exact: true },
   { to: '/admin/agencies', label: 'Agencies' },
+  { to: '/admin/analytics', label: 'Analytics' },
   { to: '/admin/audit-log', label: 'Audit Log' },
 ]
 

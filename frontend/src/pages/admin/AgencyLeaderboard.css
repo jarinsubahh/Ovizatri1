@@ -1,0 +1,84 @@
+.agency-leaderboard {
+  margin-bottom: 24px;
+  min-width: 0;
+}
+
+.agency-leaderboard-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.agency-leaderboard-heading .eyebrow {
+  margin: 0 0 4px;
+}
+
+.agency-leaderboard-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.agency-leaderboard-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.agency-leaderboard-table {
+  min-width: 700px;
+}
+
+.agency-leaderboard-table th,
+.agency-leaderboard-table td {
+  padding: 11px 12px;
+}
+
+.agency-leaderboard-rank {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 50%;
+  background: var(--sand);
+  color: var(--forest-dark);
+  font-weight: 700;
+}
+
+.agency-leaderboard-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.agency-leaderboard-revenue {
+  color: var(--forest-dark);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agency-leaderboard-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+
+.agency-leaderboard-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--ink-faint);
+  background: var(--sand);
+  border-radius: var(--radius-s);
+}
+
+@media (max-width: 600px) {
+  .agency-leaderboard-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
